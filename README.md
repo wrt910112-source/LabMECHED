@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AU5800 Learning Lab
 
 ## 周保養互動教學
@@ -156,3 +157,7 @@ Playwright 使用本機安裝的 Chrome 與 Edge，分別驗證 1366×768 和 19
 測試涵蓋部件切換、模型選取、照片載入、內部切換、視角、旋轉縮放、搜尋、停用選單、無 WebGL 的照片導覽，以及 12 孔次序、6 瓶配置、補充／更換的不同狀態、W2／CLN-2 限制及直接點選 3D 槽位。截圖輸出至 `test-results/`。使用 `npm.cmd run build` 執行嚴格 TypeScript 檢查及靜態建置。
 
 技術參考：[Three.js OrbitControls](https://threejs.org/docs/pages/OrbitControls.html)、[Vite 靜態部署](https://vite.dev/guide/static-deploy.html)。
+=======
+# LabMECHED
+digitalized laboratory instrument education platform
+>>>>>>> 31b5ae4fa74b997ba29f56c2588c99a3fec40485
