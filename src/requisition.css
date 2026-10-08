@@ -1,0 +1,357 @@
+.rack-page,
+.reagent-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 24px;
+  background: #dce3e9;
+  color: #263943;
+}
+.rack-controls {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  margin: 10px 0 20px;
+}
+.rack-controls label,
+.reagent-controls label {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.rack-controls select {
+  min-width: 150px;
+}
+.rack-controls input {
+  width: 160px;
+}
+.editing-badge {
+  margin-left: auto;
+  background: #eeee70;
+  padding: 4px 16px;
+}
+.one-point {
+  margin-left: auto;
+  background: #9ddd72;
+  padding: 5px 25px;
+}
+.rack-scroll {
+  overflow: auto;
+  max-height: 48vh;
+  border: 1px solid #899ea9;
+}
+.rack-cal {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+.rack-cal th,
+.rack-cal td {
+  border: 1px solid #a0aeb6;
+  text-align: center;
+  padding: 0;
+  height: 38px;
+}
+.rack-cal th {
+  background: #c6cccb;
+}
+.rack-cal td:nth-child(3n + 1) {
+  width: 14%;
+}
+.rack-cal button {
+  width: 100%;
+  height: 38px;
+  border: 0;
+  border-radius: 0;
+  background: #c9cfd3;
+}
+.rack-editing .rack-cal button {
+  background: #f1f2ed;
+}
+.rack-cal button.rb-selected {
+  background: #76d5d3 !important;
+}
+.rack-cal button.cal-selected {
+  background: #eeee67 !important;
+}
+.rack-test-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+}
+.rack-test-grid button {
+  border: 1px solid #a8b4bb;
+  border-radius: 0;
+  min-height: 43px;
+  background: #cbd1d5;
+  color: #253b46;
+}
+.rack-editing .rack-test-grid button {
+  background: #f1f2ed;
+}
+.rack-test-grid button.qc-selected {
+  background: #b0ded5 !important;
+}
+.rack-page button:disabled {
+  opacity: 1;
+  color: #69777e;
+}
+.rack-count {
+  text-align: right;
+  padding: 14px;
+}
+.rack-count output {
+  display: inline-block;
+  min-width: 55px;
+  background: #eef1ec;
+  border: 1px solid #bdc7cb;
+  text-align: center;
+  margin: 0 12px;
+}
+.profile-shade {
+  position: absolute;
+  inset: 65px 16px 35px;
+  background: #172d3b44;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+}
+.profile-box {
+  width: 90%;
+  max-height: 100%;
+  background: #dce4e8;
+  border: 2px solid #8d9faa;
+  box-shadow: 0 10px 40px #0004;
+  padding: 0 20px 18px;
+  display: flex;
+  flex-direction: column;
+}
+.profile-box h2 {
+  font-size: 18px;
+  text-align: center;
+  background: #658096;
+  color: white;
+  margin: 0 -20px 20px;
+  padding: 8px;
+}
+.profile-columns {
+  display: grid;
+  grid-template-columns: 40% 1fr;
+  gap: 30px;
+  min-height: 260px;
+  overflow: auto;
+}
+.profile-columns > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.profile-columns button {
+  text-align: left;
+  border-radius: 0;
+}
+.profile-columns button[aria-pressed="true"] {
+  background: #aed5d0;
+}
+.profile-preview {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-content: start;
+  background: #eef0ea;
+  border: 1px solid #a0b0b9;
+}
+.profile-preview span {
+  padding: 6px;
+  border: 1px solid #bcc7c9;
+  font-size: 13px;
+}
+.profile-box footer {
+  text-align: right;
+}
+.profile-box footer button {
+  min-width: 140px;
+  margin-left: 16px;
+}
+.profile-box p {
+  font-size: 12px;
+}
+.reagent-controls {
+  display: grid;
+  grid-template-columns: 44% 28% 1fr;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+.reagent-controls label {
+  justify-content: space-between;
+  margin: 5px;
+  font-size: 13px;
+}
+.reagent-controls input {
+  width: 135px;
+}
+.reagent-legend {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  align-content: center;
+  border: 1px solid #9caeb9;
+  padding: 8px;
+  text-align: center;
+  font-size: 13px;
+}
+.reagent-legend span {
+  background: #e9ec74;
+  padding: 4px;
+}
+.reagent-legend span:first-child {
+  background: #db9d94;
+}
+.reagent-legend span:nth-child(2) {
+  background: #b8e3d6;
+}
+.reagent-main-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid #829ba5;
+}
+.reagent-main-grid button {
+  border: 1px solid #95aeb5;
+  border-radius: 0;
+  background: #b9e1db;
+  min-height: 64px;
+  padding: 0;
+  text-align: left;
+}
+.reagent-main-grid button > span {
+  display: block;
+  text-align: center;
+  border-bottom: 1px solid #92aab0;
+  font-size: 13px;
+}
+.reagent-main-grid button > div {
+  padding: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.reagent-main-grid i {
+  height: 12px;
+  background: #6e9dcc;
+  max-width: 75%;
+}
+.reagent-main-grid .short {
+  background: #e7eda4;
+}
+.reagent-main-grid .inaccessible {
+  background: #acb0b1;
+}
+.reagent-detail-scroll {
+  overflow: auto;
+  max-height: 48vh;
+}
+.reagent-detail {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.reagent-detail th,
+.reagent-detail td {
+  border: 1px solid #99acb8;
+  padding: 5px;
+}
+.reagent-detail th {
+  position: sticky;
+  top: 0;
+  background: #c4cec9;
+  white-space: normal;
+  z-index: 1;
+}
+.reagent-detail td {
+  background: #edf0ed;
+}
+.reagent-detail .shot-cell {
+  background: #94b8d9;
+}
+.reagent-detail .stability-warning {
+  background: #f1e650;
+  color: #202a2a;
+  font-weight: bold;
+}
+.reagent-note {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.reagent-note input {
+  width: 65px;
+}
+.reagent-note label {
+  white-space: nowrap;
+}
+.reagent-training {
+  margin-top: 15px;
+}
+.reagent-training summary {
+  cursor: pointer;
+  padding: 10px;
+  background: #c8d9df;
+}
+.reagent-page > small {
+  display: block;
+  padding: 10px 0;
+  font-size: 11px;
+}
+.workstation {
+  position: fixed;
+}
+.reagent-page fieldset {
+  margin: 12px 0;
+}
+.rack-page {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rack-page > .rack-scroll {
+  flex: 1;
+  min-height: 100px;
+  max-height: none;
+}
+.rack-controls {
+  flex-shrink: 0;
+}
+.rack-page > p {
+  margin: 5px 0;
+}
+.rack-count {
+  flex-shrink: 0;
+}
+.reagent-legend span:nth-child(3) {
+  grid-column: 1;
+}
+.reagent-main-grid button {
+  min-height: 46px;
+}
+.reagent-controls {
+  gap: 12px;
+}
+.reagent-controls label {
+  margin: 2px;
+}
+.reagent-detail-scroll {
+  max-height: 42vh;
+}
+.rack-cal td:first-child {
+  background: inherit;
+}
+.reagent-main-grid button > div {
+  padding: 4px 8px;
+}
+.profile-columns button[aria-pressed="true"] {
+  color: #183d40 !important;
+}
+.rack-cal button[aria-pressed="true"] {
+  color: #194b4f !important;
+}

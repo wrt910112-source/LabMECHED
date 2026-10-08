@@ -1,0 +1,96 @@
+.weekly-panel {
+  padding: 16px;
+  color: #21433c;
+  background: #f3f7f5;
+  overflow: auto;
+  max-height: 100%;
+  font-size: 14px;
+}
+.weekly-dialog{position:absolute;inset:90px 12% 60px;z-index:20;background:#e5edf4;border:2px solid #7192aa;box-shadow:0 12px 50px #2348;overflow:auto;padding:12px;}
+.weekly-markers button{font-size:11px!important;padding:4px 6px!important;min-height:24px;max-width:160px;visibility:hidden;}
+.weekly-markers button[data-weekly-id^="well-"]{font-size:10px!important;width:19px;height:19px;min-height:19px;min-width:19px;padding:0!important;border-radius:50%;background:#e5f8eb;border:1px solid #28735c;transform:translate(-50%,-50%);}
+.weekly-markers button[data-weekly-id^="well-"]:after{display:none;}
+.weekly-markers button[data-weekly-id^="well-"][aria-pressed="true"]{background:#267d5e;color:white;}
+@media(max-width:1400px){.weekly-dialog{inset:80px 5% 50px;}}
+.weekly-panel h2 {
+  font-size: 20px;
+}
+.weekly-panel button,
+.weekly-panel select,
+.weekly-panel input[type="number"] {
+  padding: 7px;
+  margin: 4px;
+  border: 1px solid #9ab4ac;
+  border-radius: 4px;
+  background: white;
+  color: #21433c;
+}
+.weekly-panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.weekly-panel button[aria-pressed="true"] {
+  background: #badfd2;
+}
+.weekly-panel label {
+  display: block;
+  margin: 8px 0;
+}
+.weekly-panel fieldset {
+  border: 1px solid #bdd0c9;
+}
+.weekly-panel nav {
+  display: flex;
+  flex-wrap: wrap;
+}
+.weekly-rods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.weekly-bottle {
+  padding: 8px 0;
+  border-bottom: 1px solid #b9cec6;
+}
+.weekly-bottle span {
+  display: block;
+}
+.photocal-grid {
+  display: grid;
+  grid-template-columns: repeat(17, 1fr);
+  overflow: auto;
+  min-width: 270px;
+}
+.photocal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+.photocal-legend span{padding:5px 10px;color:#17342d;border:1px solid #91a69c;}
+.photocal-grid span {
+  text-align: center;
+  border: 1px solid #bbc6c1;
+  font-size: 11px;
+  padding: 4px 0;
+}
+.weekly-w2-window {
+  background: #cddff0;
+  border: 1px solid #7d9bb7;
+  padding: 12px;
+  max-width: 700px;
+  margin: 12px auto;
+}
+.weekly-w2-window h3 {
+  background: #6092bd;
+  color: white;
+  padding: 8px;
+  margin: -12px -12px 12px;
+}
+.weekly-w2-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  margin: 10px 0;
+}
+.weekly-w2-table th,
+.weekly-w2-table td {
+  border: 1px solid #b0bec8;
+  text-align: left;
+  padding: 5px;
+  font-size: 12px;
+}
