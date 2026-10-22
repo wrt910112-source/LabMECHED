@@ -14,11 +14,16 @@ test("ISE hinged cover, four named cups and five independently removable compone
       if (o.userData.cupName)
         cups.push([o.userData.cupName, o.userData.contents]);
     });
-    m.iseModel.setState({ open: true, removed: ["ise-motor"] });
+    m.iseModel.setState({ open: true, removed: ["ise-plug-a", "ise-plug-b"] });
+    m.iseModel.setState({
+      open: true,
+      removed: ["ise-plug-a", "ise-plug-b", "ise-motor"],
+    });
     for (let i = 0; i < 90; i++) m.iseModel.animate();
     const lifted = m.groups.get("ise-motor")!.position.y;
     const other = m.groups.get("ise-mixing-cup")!.position.y;
     const openAngle = m.iseModel.lid.rotation.z;
+    m.iseModel.setState({ open: true, removed: ["ise-plug-a", "ise-plug-b"] });
     m.iseModel.setState({ open: false, removed: [] });
     for (let i = 0; i < 90; i++) m.iseModel.animate();
     return {
@@ -39,7 +44,7 @@ test("ISE hinged cover, four named cups and five independently removable compone
   ]);
   expect(model.lifted).toBeCloseTo(0.25, 3);
   expect(model.other).toBe(0);
-  expect(model.openAngle).toBeCloseTo(1.72, 3);
+  expect(model.openAngle).toBeCloseTo(Math.PI / 2, 3);
   expect(model.closedAngle).toBeCloseTo(0, 3);
   expect(model.returned).toBeCloseTo(0, 3);
   expect(model.removable).toHaveLength(5);
@@ -58,9 +63,9 @@ test("ISE hinged cover, four named cups and five independently removable compone
   for (const id of [
     "ise-mixing-cup",
     "ise-t-tube",
-    "ise-motor",
     "ise-plug-a",
     "ise-plug-b",
+    "ise-motor",
   ]) {
     await page.getByTestId(`part-${id}`).click();
     await expect(page.locator(".viewer-host")).toHaveAttribute(

@@ -1,3 +1,4 @@
+import type { ReagentBottle } from "../shared/dailyScenario";
 import { useState } from "react";
 import type { Daily } from "./DailyTraining";
 import {
@@ -289,7 +290,7 @@ export default function ReagentManagement({
                     </td>
                     <td>
                       <button
-                        disabled={!d.cal.checked || r.replaced}
+                        disabled={r.replaced}
                         onClick={() =>
                           change(i, {
                             replaced: true,
@@ -322,9 +323,21 @@ export default function ReagentManagement({
             <legend>Reagent Check</legend>
             <button
               onClick={() => {
-                if (!d.active || !d.cal.checked || !d.reagentReady) {
+                if (!d.temp.saved || !d.index) {
                   notify(
-                    "請先完成校正檢查，逐項記錄並確認用量，且更換用完、量不足或即將到期的試劑；R1／R2 分別檢查。",
+                    "Reagent Check 前請先完成溫度登記及 New Index，兩者順序不限。",
+                  );
+                  return;
+                }
+                if (!d.suppliesReady) {
+                  notify(
+                    "Reagent Check 前請逐瓶補滿十二瓶 CLN-1、Diluent、DET-1、DET-2。",
+                  );
+                  return;
+                }
+                if (!d.active || !d.reagentReady) {
+                  notify(
+                    "請逐項記錄並確認用量，且更換用完、量不足或即將到期的試劑；R1／R2 分別檢查。",
                   );
                   return;
                 }
@@ -355,6 +368,145 @@ export default function ReagentManagement({
             {n}
           </button>
         ))}
+      </nav>
+    </>
+  );
+}
+
+export function ExamReagentManagement({
+  rows,
+  disabled,
+  onReplace,
+  onCheck,
+}: {
+  rows: ReagentBottle[];
+  disabled: boolean;
+  onReplace: (id: string) => void;
+  onCheck: () => void;
+}) {
+  const [tab, setTab] = useState("Details");
+  return (
+    <>
+      <nav className="ws-primary-tabs">
+        <button aria-pressed>Reagent Management</button>
+        <button disabled>Reagent Inventory</button>
+        <button disabled>Reagent Consumption</button>
+      </nav>
+      <nav className="ws-tabs">
+        {["Main", "Details", "ISE"].map((t) => (
+          <button
+            key={t}
+            disabled={t === "ISE"}
+            aria-pressed={tab === t}
+            onClick={() => setTab(t)}
+          >
+            {t}
+          </button>
+        ))}
+      </nav>
+      <section className="reagent-page">
+        {tab === "Main" ? (
+          <div className="reagent-main-grid">
+            {[...new Set(rows.map((r) => r.test!))].map((test) => (
+              <button
+                key={test}
+                className={
+                  rows.some((r) => r.test === test && !r.replaced)
+                    ? "short"
+                    : ""
+                }
+                onClick={() => setTab("Details")}
+              >
+                <span>{test}</span>
+                <div>
+                  {rows
+                    .filter((r) => r.test === test)
+                    .map((r) => `${r.side}: ${r.remaining}`)
+                    .join(" / ")}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="reagent-detail-scroll">
+            <table className="reagent-detail" aria-label="考試試劑明細">
+              <thead>
+                <tr>
+                  {[
+                    "Pos.",
+                    "Test Name",
+                    "R1/R2",
+                    "Shots",
+                    "Onboard Remaining",
+                    "RB Stability Remaining",
+                    "Cal Stability Remaining",
+                    "Expiration",
+                    "Lot No.",
+                    "Bottle No. (SN)",
+                    "Seq.",
+                    "Comment",
+                  ].map((h) => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.id}</td>
+                    <td>{r.test}</td>
+                    <td>{r.side}</td>
+                    <td>{r.remaining}</td>
+                    <td>—</td>
+                    <td
+                      className={r.rb === "expired" ? "stability-expired" : ""}
+                    >
+                      {r.rb === "expired"
+                        ? "expired"
+                        : r.rb === "unchecked"
+                          ? "未檢查"
+                          : "有效"}
+                    </td>
+                    <td
+                      className={r.cal === "expired" ? "stability-expired" : ""}
+                    >
+                      {r.cal === "na"
+                        ? "—"
+                        : r.cal === "expired"
+                          ? "expired"
+                          : r.cal === "unchecked"
+                            ? "未檢查"
+                            : "有效"}
+                    </td>
+                    <td>
+                      {!r.replaced && r.reason === "即將到期"
+                        ? "即將到期"
+                        : "—"}
+                    </td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>1</td>
+                    <td>
+                      <span>{r.replaced ? "已更換" : r.reason}</span>{" "}
+                      <button
+                        disabled={disabled}
+                        aria-label={`更換試劑 ${r.name} ${r.side}`}
+                        onClick={() => onReplace(r.id!)}
+                      >
+                        更換試劑
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <nav className="ws-footer">
+        <button disabled={disabled} onClick={onCheck}>
+          Reagent Check · All positions
+        </button>
       </nav>
     </>
   );

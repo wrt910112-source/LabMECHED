@@ -1,7 +1,14 @@
 import * as T from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { PartId } from "./data";
-export type DoorId = "ise-top" | "ise-top-rear" | "ise-middle" | "ise-bottom" | "loader-door";
+export type DoorId =
+  | "ise-top"
+  | "ise-top-rear"
+  | "ise-middle"
+  | "ise-bottom"
+  | "loader-door"
+  | "syringe-front"
+  | "syringe-rear";
 export type DoorState = Record<DoorId, boolean>;
 export const closedDoors: DoorState = {
   "ise-top": false,
@@ -9,6 +16,8 @@ export const closedDoors: DoorState = {
   "ise-middle": false,
   "ise-bottom": false,
   "loader-door": false,
+  "syringe-front": false,
+  "syringe-rear": false,
 };
 export function createEnclosures(
   root: T.Group,
@@ -106,27 +115,245 @@ export function createEnclosures(
     return g;
   }
   const ise = groups.get("ise")!;
-  for(const [id,sign] of [['ise-top',1],['ise-top-rear',-1]] as const){
-    const top=door(id,ise,[0.015,0.927,0]);
-    box(top,'smoked-top',0.439,0.025,0.527,0,0.308,sign*0.267,dark);
-    box(top,'smoked-end',0.432,0.286,0.022,0,0.155,sign*0.527,dark);
-    for(const x of [-0.214,0.214])box(top,`smoked-side-${x}`,0.018,0.286,0.527,x,0.155,sign*0.267,dark);
-    box(top,'top-grip',0.21,0.016,0.021,0,0.024,sign*0.541,steel);
+  // Raised central arch; each shell rotates away from the arch around its roof edge.
+  for (const x of [-0.258, 0.252])
+    box(ise, `arch-upright-${x}`, 0.025, 0.391, 0.1, x, 1.114, 0, white);
+  box(ise, "ise-central-arch", 0.535, 0.028, 0.1, -0.003, 1.292, 0, white);
+  for (const [id, sign] of [
+    ["ise-top", 1],
+    ["ise-top-rear", -1],
+  ] as const) {
+    const top = door(id, ise, [0.015, 1.27, sign * 0.075]);
+    box(top, "smoked-top", 0.435, 0.018, 0.465, 0, 0, sign * 0.238, dark);
+    box(top, "smoked-end", 0.427, 0.3, 0.018, 0, -0.159, sign * 0.47, dark);
+    for (const x of [-0.21, 0.21])
+      box(
+        top,
+        `smoked-side-${x}`,
+        0.014,
+        0.3,
+        0.465,
+        x,
+        -0.159,
+        sign * 0.238,
+        dark,
+      );
+    box(top, "top-grip", 0.21, 0.016, 0.021, 0, -0.297, sign * 0.481, steel);
   }
-  const mid = door(
-    "ise-middle",
-    groups.get("ise-reagents")!,
-    [0.015, 0.921, 0.577],
+  const reagents = groups.get("ise-reagents")!;
+  const reagentSmoke = new T.MeshPhysicalMaterial({
+    color: "#182128",
+    transparent: true,
+    opacity: 0.72,
+    roughness: 0.12,
+    metalness: 0.2,
+    side: T.DoubleSide,
+    depthWrite: false,
+  });
+  // Side cheeks follow the sloping profile, not a rectangular panel.
+  function cheek(
+    p: T.Object3D,
+    name: string,
+    x: number,
+    points: number[][],
+    material: T.Material,
+  ) {
+    const shape = new T.Shape();
+    points.forEach(([z, y], i) =>
+      i === 0 ? shape.moveTo(z, y) : shape.lineTo(z, y),
+    );
+    shape.closePath();
+    const geometry = new T.ExtrudeGeometry(shape, {
+      depth: 0.012,
+      bevelEnabled: false,
+    });
+    // Shape x -> world z; extrusion -> world x.
+    geometry.rotateY(-Math.PI / 2);
+    const o = new T.Mesh(geometry, material);
+    o.name = name;
+    o.position.x = x;
+    p.add(o);
+    return o;
+  }
+  const mid = door("ise-middle", reagents, [0.015, 0.895, 0.565]);
+  const roof = box(
+    mid,
+    "middle-smoked-roof",
+    0.445,
+    0.012,
+    Math.hypot(0.405, 0.135),
+    0,
+    -0.0675,
+    0.2025,
+    reagentSmoke,
   );
-  box(mid, "middle-smoked-door", 0.435, 0.538, 0.024, 0, -0.269, 0, dark);
-  box(mid, "middle-grip", 0.2, 0.012, 0.022, 0, -0.512, 0.017, steel);
+  roof.rotation.x = Math.atan2(0.135, 0.405);
+  box(
+    mid,
+    "middle-smoked-door",
+    0.445,
+    0.31,
+    0.012,
+    0,
+    -0.29,
+    0.405,
+    reagentSmoke,
+  );
+  for (const x of [-0.2165, 0.2285])
+    cheek(
+      mid,
+      `middle-smoked-cheek-${x}`,
+      x,
+      [
+        [0, 0],
+        [0.405, -0.135],
+        [0.405, -0.445],
+        [0, -0.445],
+      ],
+      reagentSmoke,
+    );
+  const bend = cyl(
+    mid,
+    "middle-rounded-bend",
+    0.012,
+    0.445,
+    0,
+    -0.135,
+    0.405,
+    reagentSmoke,
+  );
+  bend.rotation.z = Math.PI / 2;
+  box(mid, "middle-hinge-strip", 0.3, 0.014, 0.023, 0, 0, 0, steel);
+  box(mid, "middle-grip", 0.24, 0.016, 0.022, 0, -0.426, 0.417, steel);
+  // Three-bay tray projects forward of the upper module, as on the reference photos.
+  box(ise, "middle-shelf", 0.45, 0.019, 0.43, 0.015, 0.43, 0.775, steel);
+  box(reagents, "reagent-tray-front", 0.46, 0.035, 0.028, 0.015, 0.427, 0.986);
+  for (const x of [-0.213, 0.243])
+    cheek(
+      reagents,
+      `reagent-cabinet-cheek-${x}`,
+      x,
+      [
+        [0.565, 0.89],
+        [0.983, 0.595],
+        [0.983, 0.42],
+        [0.565, 0.42],
+      ],
+      white,
+    );
+  for (const [i, x] of [-0.1275, 0.015, 0.1575].entries()) {
+    box(
+      reagents,
+      `reagent-tray-${i}`,
+      0.132,
+      0.006,
+      0.255,
+      x,
+      0.443,
+      0.794,
+      steel,
+    );
+    box(
+      reagents,
+      `reagent-divider-${i}`,
+      0.006,
+      0.038,
+      0.255,
+      x - 0.069,
+      0.46,
+      0.794,
+      steel,
+    );
+  }
+  box(
+    reagents,
+    "reagent-backplate",
+    0.428,
+    0.43,
+    0.015,
+    0.015,
+    0.667,
+    0.573,
+    steel,
+  );
+  for (let i = 0; i < 15; i++)
+    box(
+      reagents,
+      `reagent-vent-${i}`,
+      0.007,
+      0.056,
+      0.002,
+      -0.18 + i * 0.019,
+      0.79,
+      0.582,
+      dark,
+    );
+  for (const x of [-0.1075, 0.035]) {
+    const port = cyl(
+      reagents,
+      `reagent-tube-port-${x}`,
+      0.009,
+      0.012,
+      x,
+      0.82,
+      0.587,
+      steel,
+    );
+    port.rotation.x = Math.PI / 2;
+  }
+  // Right-hand fixed fittings are illustrative, separate from the syringe assessment.
+  box(
+    reagents,
+    "ise-reagent-syringe-mount",
+    0.054,
+    0.245,
+    0.02,
+    0.176,
+    0.699,
+    0.592,
+    steel,
+  );
+  const barrel = cyl(
+    reagents,
+    "ise-reagent-syringe",
+    0.017,
+    0.15,
+    0.176,
+    0.7,
+    0.616,
+    plastic,
+  );
+  barrel.material = new T.MeshPhysicalMaterial({
+    color: "#d5e4df",
+    transparent: true,
+    opacity: 0.55,
+    roughness: 0.15,
+  });
+  cyl(
+    reagents,
+    "ise-reagent-syringe-rod",
+    0.004,
+    0.2,
+    0.176,
+    0.68,
+    0.616,
+    steel,
+  );
+  cyl(
+    reagents,
+    "ise-reagent-syringe-valve",
+    0.022,
+    0.023,
+    0.176,
+    0.79,
+    0.616,
+    white,
+  );
   const ref = register("ise-reference", ise);
   const bottom = door("ise-bottom", ref, [-0.201, 0.06, 0.578]);
-  box(bottom, "reference-door", 0.431, 0.306, 0.022, 0.2155, 0.153, 0);
-  box(bottom, "reference-grip", 0.15, 0.012, 0.019, 0.24, 0.289, 0.019, steel);
-  box(ise, "middle-shelf", 0.418, 0.019, 0.52, 0.015, 0.373, 0.305, steel);
+  box(bottom, "reference-door", 0.431, 0.35, 0.022, 0.2155, 0.175, 0);
+  box(bottom, "reference-grip", 0.15, 0.012, 0.019, 0.24, 0.326, 0.019, steel);
   box(ise, "reference-shelf", 0.416, 0.018, 0.51, 0.015, 0.101, 0.307, steel);
-  box(ise, "reagent-backplate", 0.416, 0.52, 0.015, 0.015, 0.374, 0.045, steel);
   const loader = groups.get("loader")!;
   const clean = register("clean-solution", loader);
   for (const x of [-1.049, -0.315])
@@ -221,13 +448,15 @@ export function createEnclosures(
     for (const [id, g] of doors) {
       const axis = id.startsWith("ise-top") || id === "ise-middle" ? "x" : "y";
       const angle =
-        id === "ise-top-rear" ? 1.28 : id === "ise-top"
-          ? -1.28
-          : id === "ise-middle"
-            ? -2.6
-            : id === "ise-bottom"
-              ? -1.6
-              : 1.6;
+        id === "ise-top-rear"
+          ? Math.PI / 2
+          : id === "ise-top"
+            ? -Math.PI / 2
+            : id === "ise-middle"
+              ? -1.92
+              : id === "ise-bottom" || id === "syringe-rear"
+                ? -1.6
+                : 1.6;
       g.rotation[axis] = T.MathUtils.lerp(
         g.rotation[axis],
         desired[id] ? angle : 0,
@@ -235,5 +464,5 @@ export function createEnclosures(
       );
     }
   }
-  return { doors, setState, animate };
+  return { doors, door, setState, animate };
 }

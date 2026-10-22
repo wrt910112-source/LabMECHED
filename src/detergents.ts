@@ -202,3 +202,15 @@ export function slotPosition(id: string): Vec3 {
     bank.position[2] - Math.sin(bank.rotation) * x,
   ];
 }
+
+/** Shared rear camera for both ISE detergent slots, independent of cover state. */
+export function slotCamera(id: string): { eye: Vec3; target: Vec3 } {
+  const p = slotPosition(id),
+    module = slotById[id].module;
+  return module === "ise"
+    ? { eye: [-0.105, 1.4, -1.18], target: [-0.105, 0.96, -0.43] }
+    : {
+        eye: [p[0] + 0.2, 1.38, p[2] + (module === "sample" ? -0.75 : 0.52)],
+        target: p,
+      };
+}

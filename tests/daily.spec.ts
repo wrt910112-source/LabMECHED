@@ -1,3 +1,4 @@
+import { prepareDailyTasks } from "./daily-fixture";
 import { test, expect } from "@playwright/test";
 test("daily maintenance sequence, prerequisites, six probes, calibration and paired reagents", async ({
   page,
@@ -33,7 +34,8 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   });
   await home("Analyzer Maintenance");
   await button("Cleaning Probe").click();
-  await expect(screen.getByRole("status")).toContainText("先勾選");
+  await expect(screen.getByRole("status")).toContainText("主蓋");
+  await screen.getByLabel("主蓋開啟", { exact: true }).check();
   await screen.getByLabel("Analyzer Maintenance", { exact: true }).check();
   await button("Cleaning Probe").click();
   await button("Inspect Probe & Mixing Bar").click();
@@ -45,20 +47,25 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
     await screen.getByLabel(`${p} 排水`, { exact: true }).selectOption("正常");
   for (const s of ["左側", "右側"])
     await screen.getByLabel(`${s} mixing bars`).selectOption("正常");
+  await prepareDailyTasks(page, screen);
+  await home("Analyzer Maintenance");
   await button("ISE Maintenance").click();
+  await screen.getByLabel("ISE Maintenance", { exact: true }).uncheck();
+  await screen.getByLabel("ISE 上蓋開啟", { exact: true }).check();
   await button("Cleaning").click();
   await expect(screen.getByRole("status")).toContainText("裝滿");
   await button("在 CLEAN 放置裝滿的 Cleaning Solution").click();
   await button("Cleaning").click();
-  await button("Total Prime").click();
-  await expect(screen.getByRole("status")).toContainText("先勾選");
+  await screen.getByLabel("ISE Maintenance", { exact: true }).uncheck();
+  await expect(button("Total Prime")).toBeDisabled();
   await screen.getByLabel("ISE Maintenance", { exact: true }).check();
   await button("Total Prime").click();
   await button("Total Prime").click();
-  await expect(button("取出並丟棄 CLEAN 杯")).toBeDisabled();
+  await expect(button("取出並丟棄 CLEAN 杯")).toBeEnabled();
   await button("Total Prime").click();
   await button("Total Prime").click();
   await expect(screen.getByRole("status")).toContainText("3／3");
+  await screen.getByLabel("ISE Maintenance", { exact: true }).uncheck();
   await button("Calibration").click();
   await button("Serum/Urine Start").click();
   await expect(screen.getByRole("status")).toContainText("四杯");
@@ -115,12 +122,12 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   await expect(screen.locator(".daily-steps")).toContainText(
     "Rack Requisition",
   );
-  await expect(screen.locator(".daily-progress")).toContainText("8／9");
+  await expect(screen.locator(".daily-progress")).toContainText("11／12");
   await page.keyboard.press("Escape");
   await page.getByTestId("part-console").click();
-  await expect(screen.locator(".daily-progress")).toContainText("8／9");
+  await expect(screen.locator(".daily-progress")).toContainText("11／12");
   await button("日保養").click();
   await button("重設並開始新一輪日保養").click();
-  await expect(screen.locator(".daily-progress")).toContainText("0／9");
+  await expect(screen.locator(".daily-progress")).toContainText("0／12");
   expect(errors).toEqual([]);
 });

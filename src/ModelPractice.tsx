@@ -1,4 +1,4 @@
-import type { Daily } from "./DailyTraining";
+import { DailyInstrumentControls, type Daily } from "./DailyTraining";
 export const practiceIds = [
   "R1-1",
   "R1-2",
@@ -28,10 +28,11 @@ export function ModelPractice({
 }) {
   const cup = ["S-H", "S-L", "U-H", "U-L"].indexOf(target),
     mix = target === "左側" || target === "右側";
-  const ready = d.completed[3] && d.active;
+  const ready = d.active;
   return (
     <section className="model-practice">
       <h3>模型日保養操作</h3>
+      <DailyInstrumentControls d={d} />
       <p>
         點模型上的標籤或部件，再使用下方工具。檢查動畫為正常情境示意，需自行確認結果。
       </p>
@@ -56,13 +57,19 @@ export function ModelPractice({
           {cup === 3 && (
             <>
               <button
-                disabled={!ready || d.cleanCup !== "empty"}
+                disabled={
+                  !ready ||
+                  !d.cupAccessible ||
+                  !["empty", "discarded"].includes(d.cleanCup)
+                }
                 onClick={() => d.setCleanCup("full")}
               >
                 放入裝滿 Cleaning Solution 的 CLEAN 杯
               </button>
               <button
-                disabled={d.cleanCup !== "used" || d.prime !== 3}
+                disabled={
+                  !d.cupAccessible || !["full", "used"].includes(d.cleanCup)
+                }
                 onClick={() => d.setCleanCup("discarded")}
               >
                 取出並丟棄 CLEAN 杯
@@ -80,7 +87,11 @@ export function ModelPractice({
             </>
           )}
           <button
-            disabled={d.cleanCup !== "discarded" || d.drops[cup] !== ""}
+            disabled={
+              !d.cupAccessible ||
+              d.cleanCup !== "discarded" ||
+              d.drops[cup] !== ""
+            }
             onClick={() =>
               d.setDrops((v) => v.map((n, i) => (i === cup ? "0" : n)))
             }
@@ -89,6 +100,7 @@ export function ModelPractice({
           </button>
           <button
             disabled={
+              !d.cupAccessible ||
               d.drops[cup] === "" ||
               d.cleanCup !== "discarded" ||
               d.cal.serum ||
@@ -113,13 +125,13 @@ export function ModelPractice({
               : "先在電腦選 Inspect Probe & Mixing Bar。"}
           </p>
           <button
-            disabled={d.mode !== "inspect" || d.cleaned}
+            disabled={d.mode !== "inspect" || !d.canInspect}
             onClick={() => d.setMix((v) => ({ ...v, [target]: "正常" }))}
           >
             確認 {target} mixing bars 正常
           </button>
           <button
-            disabled={d.mode !== "inspect" || d.cleaned}
+            disabled={d.mode !== "inspect" || !d.canInspect}
             onClick={() => d.setMix((v) => ({ ...v, [target]: "異常" }))}
           >
             記錄攪拌異常
@@ -133,22 +145,24 @@ export function ModelPractice({
               ? "已進入 Cleaning Probe，可使用酒精棉。"
               : d.mode === "inspect"
                 ? "正常排水動畫示意已啟動。"
-                : "請先在電腦勾選 Analyzer Maintenance 並選 Cleaning Probe。"}
+                : "開啟分析單元主蓋後，可使用酒精棉擦拭。"}
           </p>
           <button
-            disabled={d.mode !== "wipe" || d.wiped.includes(target)}
+            disabled={
+              !d.active || !d.wipeAccessible || d.wiped.includes(target)
+            }
             onClick={() => d.setWiped((v) => [...v, target])}
           >
             用酒精棉擦拭 {target}
           </button>
           <button
-            disabled={d.mode !== "inspect" || d.cleaned}
+            disabled={d.mode !== "inspect" || !d.canInspect}
             onClick={() => d.setDrains((v) => ({ ...v, [target]: "正常" }))}
           >
             確認 {target} 正常排水
           </button>
           <button
-            disabled={d.mode !== "inspect" || d.cleaned}
+            disabled={d.mode !== "inspect" || !d.canInspect}
             onClick={() => d.setDrains((v) => ({ ...v, [target]: "異常" }))}
           >
             記錄排水異常

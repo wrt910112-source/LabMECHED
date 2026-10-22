@@ -14,6 +14,29 @@ export interface IseState {
   open: boolean;
   removed: IseComponent[];
 }
+export function iseTransitionAllowed(previous: IseState, next: IseState) {
+  const wasOut = (id: IseComponent) => previous.removed.includes(id);
+  const isOut = (id: IseComponent) => next.removed.includes(id);
+  if (
+    !wasOut("ise-motor") &&
+    isOut("ise-motor") &&
+    !["ise-plug-a", "ise-plug-b"].every((id) => wasOut(id as IseComponent))
+  )
+    return false;
+  if (
+    wasOut("ise-motor") &&
+    ["ise-plug-a", "ise-plug-b"].some(
+      (id) => wasOut(id as IseComponent) && !isOut(id as IseComponent),
+    )
+  )
+    return false;
+  if (
+    isOut("ise-motor") &&
+    !["ise-plug-a", "ise-plug-b"].every((id) => isOut(id as IseComponent))
+  )
+    return false;
+  return true;
+}
 export const iseCups = [
   { name: "S-H", contents: "SEL-Na / CRS-H" },
   { name: "S-L", contents: "SEL-K / CRS-M" },
@@ -156,6 +179,14 @@ export function createIseModel(
     [0.015, 0.69, 0.065],
     metal,
   );
+  // Solid module boundary: opening the metal lid never opens the reagent bay below.
+  box(
+    parent,
+    "ise-module-front-bulkhead",
+    [0.3, 0.2, 0.016],
+    [-0.04, 0.794, 0.454],
+    metal,
+  );
   box(parent, "ise-left-wall", [0.013, 0.212, 0.78], [-0.192, 0.795, 0.065]);
   box(parent, "ise-right-deck", [0.125, 0.027, 0.78], [0.174, 0.895, 0.065]);
   const rearShape = rectangle(0.43, 0.27, 0.005);
@@ -203,11 +234,11 @@ export function createIseModel(
   // Actual hinged panel, separate from the dark outer safety cover.
   const lid = new T.Group();
   lid.name = "ise-maintenance-cover";
-  lid.position.set(-0.185, 0.913, 0.06);
+  lid.position.set(-0.168, 0.913, 0.06);
   parent.add(lid);
-  box(lid, "cover-panel", [0.294, 0.014, 0.78], [0.147, 0, 0]);
-  box(lid, "cover-underside", [0.277, 0.003, 0.753], [0.147, -0.008, 0], metal);
-  box(lid, "cover-handle", [0.023, 0.023, 0.14], [0.225, 0.016, 0.075]);
+  box(lid, "cover-panel", [0.277, 0.014, 0.78], [0.1385, 0, 0]);
+  box(lid, "cover-underside", [0.26, 0.003, 0.753], [0.1385, -0.008, 0], metal);
+  box(lid, "cover-handle", [0.023, 0.01, 0.14], [0.215, 0.005, 0.075]);
   for (const z of [-0.26, 0.26])
     cyl(lid, `hinge-${z}`, 0.009, 0.031, [0, 0, z], metal).rotation.x =
       Math.PI / 2;
@@ -390,12 +421,12 @@ export function createIseModel(
   }
   let desired: IseState = { open: false, removed: [] };
   function setState(state: IseState) {
-    desired = state;
+    if (iseTransitionAllowed(desired, state)) desired = state;
   }
   function animate() {
     lid.rotation.z = T.MathUtils.lerp(
       lid.rotation.z,
-      desired.open ? 1.72 : 0,
+      desired.open ? Math.PI / 2 : 0,
       0.12,
     );
     for (const [id, g] of movable) {

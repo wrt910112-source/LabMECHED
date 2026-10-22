@@ -1870,3 +1870,21 @@ dialog h2 {
   border-bottom: 1px solid #dae1d8;
   text-align: left;
 }
+
+.cabinet-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cabinet-toggle {
+  padding: 10px 12px;
+  border: 1px solid #a8b9ab;
+  border-radius: 6px;
+  color: #365d4c;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.cabinet-toggle[aria-pressed="true"] {
+  background: #365d4c;
+  color: #fff;
+}

@@ -355,3 +355,7 @@
 .rack-cal button[aria-pressed="true"] {
   color: #194b4f !important;
 }
+
+.stability-expired, .rack-cal button.stability-expired { background: #f4e94c; color: #302b00; font-weight: 700; }
+
+.reagent-detail td.stability-expired, .rack-cal button.stability-expired { background: #f4e94c !important; color: #302b00 !important; }

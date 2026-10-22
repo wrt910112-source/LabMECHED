@@ -168,7 +168,12 @@ export function createInstrument() {
   }
   function cabinet(p: T.Group, x: number, w: number, d: number) {
     if (p.name === "analyzer" || p.name === "ise") {
-      box(p, "cabinet-back", [w, 0.77, 0.035], [x, 0.425, -d / 2 + 0.018]);
+      if (p.name !== "analyzer")
+        box(p, "cabinet-back", [w, 0.77, 0.035], [x, 0.425, -d / 2 + 0.018]);
+      else {
+        box(p, "rear-upper-frame", [w, 0.12, 0.035], [x, 0.75, -d / 2 + 0.018]);
+        box(p, "rear-lower-frame", [w, 0.08, 0.035], [x, 0.09, -d / 2 + 0.018]);
+      }
       for (const side of [-1, 1])
         box(
           p,
@@ -180,7 +185,7 @@ export function createInstrument() {
         p,
         "cabinet-top",
         [w, 0.03, d],
-        [x, p.name === "ise" ? 0.665 : 0.795, 0],
+        [x, p.name === "ise" ? 0.415 : 0.795, 0],
       );
       if (p.name !== "ise")
         box(p, "cabinet-divider", [0.025, 0.69, d], [x, 0.43, 0]);
@@ -487,7 +492,7 @@ export function createInstrument() {
   cabinet(ise, 0.015, 0.45, 1.14);
 
   probe(ise, "ise-sample-probe", 0.055, -0.44, -1);
-  label(ise, "ise-label", "ISE", [0.015, 0.803, 0.574], 0.16, 0.037);
+  label(ise, "ise-label", "ISE", [0.015, 0.403, 0.998], 0.09, 0.023);
   const iseModel = createIseModel(ise, group);
   for (let i = 0; i < 2; i++)
     bottle(
@@ -506,18 +511,86 @@ export function createInstrument() {
     ["ISE Mid Standard", "#d4b72f"],
     ["ISE Buffer", "#a54451"],
   ].forEach(([n, c], i) => {
-    const x = -0.085 + i * 0.19;
-    bottle(reagents, n, x, 0.388, 0.36, c, 0.145, 0.202);
+    // Separate, handled jerrycans in the projecting reagent tray, ahead of the module.
+    const x = -0.1275 + i * 0.1425;
+    const jug = new T.Group();
+    jug.name = n;
+    jug.position.set(x, 0.449, 0.8);
+    reagents.add(jug);
+    box(
+      jug,
+      "bottle-body",
+      [0.12, 0.25, 0.18],
+      [0, 0.125, 0],
+      translucent,
+      0.015,
+    );
+    box(jug, "shoulder", [0.112, 0.035, 0.166], [0, 0.258, 0], translucent);
+    for (const z of [-0.024, 0.065])
+      box(
+        jug,
+        `handle-support-${z}`,
+        [0.019, 0.043, 0.019],
+        [0, 0.29, z],
+        white,
+      );
+    box(
+      jug,
+      "integrated-handle",
+      [0.019, 0.019, 0.107],
+      [0, 0.316, 0.02],
+      white,
+    );
+    cyl(jug, "neck", 0.021, 0.022, [0.02, 0.286, -0.055], white);
+    cyl(jug, "cap-collar", 0.026, 0.019, [0.02, 0.305, -0.055], white);
+    cyl(
+      jug,
+      "cap",
+      0.016,
+      0.006,
+      [0.02, 0.318, -0.055],
+      new T.MeshStandardMaterial({ color: c }),
+    );
+    cyl(jug, "tube-port", 0.006, 0.019, [0.02, 0.329, -0.055], steel);
+    label(
+      jug,
+      "jug-label",
+      i === 0 ? "ISE Mid Standard" : "ISE Buffer",
+      [0, 0.137, 0.092],
+      0.099,
+      0.048,
+      "#f1f3eb",
+      "#34433f",
+    );
+    box(
+      jug,
+      "label-colour",
+      [0.025, 0.012, 0.001],
+      [0.029, 0.104, 0.093],
+      new T.MeshStandardMaterial({ color: c }),
+      0.0003,
+    );
     line(
       reagents,
       `${n}-tube`,
       [
-        [x, 0.627, 0.36],
-        [x - 0.025, 0.641, 0.22],
-        [x, 0.645, 0.07],
+        [x + 0.02, 0.787, 0.745],
+        [x + 0.033, 0.826, 0.72],
+        [x + 0.06, 0.81, 0.65],
+        [x + 0.02, 0.82, 0.59],
       ],
-      0.003,
+      0.0025,
       translucent,
+    );
+    label(
+      reagents,
+      `${n}-tray-label`,
+      i === 0 ? "M.STD-1" : "BUFFER-1",
+      [x, 0.447, 0.991],
+      0.095,
+      0.017,
+      "#e5e6de",
+      "#35423d",
     );
   });
   const reference = groups.get("ise-reference")!;
@@ -525,19 +598,19 @@ export function createInstrument() {
     reference,
     "ISE Reference",
     -0.068,
-    0.114,
+    0.12,
     0.36,
     "#285c9e",
-    0.105,
-    0.174,
+    0.12,
+    0.235,
   );
   line(
     reference,
     "reference-tube",
     [
-      [-0.068, 0.315, 0.36],
-      [-0.11, 0.34, 0.23],
-      [-0.068, 0.34, 0.07],
+      [-0.068, 0.382, 0.36],
+      [-0.11, 0.403, 0.23],
+      [-0.068, 0.402, 0.07],
     ],
     0.003,
     translucent,
@@ -558,22 +631,95 @@ export function createInstrument() {
   );
   label(anl, "model", "AU5800", [1.135, 0.842, 0.812], 0.21, 0.04, "#778885");
   for (let i = 0; i < 2; i++) {
-    const door = box(
-      anl,
+    const panel =
+      i === 0 ? enclosures.door("syringe-front", anl, [0.2475, 0, 0.792]) : anl;
+    box(
+      panel,
       `front-door-${i}`,
       [0.515, 0.66, 0.015],
-      [0.505 + i * 0.53, 0.445, 0.792],
+      [i === 0 ? 0.2575 : 1.035, 0.445, i === 0 ? 0 : 0.792],
       white,
     );
-    const grip = box(
-      anl,
+    box(
+      panel,
       `door-grip-${i}`,
       [0.12, 0.009, 0.014],
-      [0.505 + i * 0.53, 0.752, 0.805],
+      [i === 0 ? 0.2575 : 1.035, 0.752, i === 0 ? 0.013 : 0.805],
       steel,
     );
-    if (i === 0) covers.push(door, grip);
   }
+  const rearSyringes = group("rear-syringes", anl);
+  const rearDoor = enclosures.door(
+    "syringe-rear",
+    rearSyringes,
+    [1.295, 0, -0.777],
+  );
+  box(
+    rearDoor,
+    "rear-syringe-door",
+    [0.515, 0.56, 0.022],
+    [-0.2575, 0.409, 0],
+    white,
+  );
+  box(
+    rearDoor,
+    "rear-syringe-grip",
+    [0.14, 0.015, 0.018],
+    [-0.2575, 0.654, -0.022],
+    steel,
+  );
+  // Viewed from the rear, the two syringes occupy the left bay only.
+  // The right panel stays on the cabinet rather than the moving hinge group.
+  box(
+    anl,
+    "rear-fixed-right-door",
+    [0.515, 0.56, 0.022],
+    [0.505, 0.409, -0.777],
+    white,
+  );
+  box(
+    anl,
+    "rear-fixed-right-grip",
+    [0.14, 0.015, 0.018],
+    [0.505, 0.654, -0.799],
+    steel,
+  );
+  box(
+    rearSyringes,
+    "rear-syringe-group-backplate",
+    [0.4, 0.43, 0.025],
+    [1.0, 0.41, -0.64],
+    steel,
+  );
+  // Two syringes confirmed by the user; remain one inspection group in the rubric.
+  const groupGlass = new T.MeshPhysicalMaterial({
+    color: "#d5e7e6",
+    transparent: true,
+    opacity: 0.4,
+    roughness: 0.12,
+    depthWrite: false,
+  });
+  for (const [i, x] of [0.91, 1.09].entries()) {
+    const syringe = new T.Group();
+    syringe.name = `rear-syringe-${i + 1}`;
+    syringe.userData.componentType = "syringe";
+    syringe.userData.removable = false;
+    rearSyringes.add(syringe);
+    cyl(syringe, "glass-barrel", 0.029, 0.22, [x, 0.45, -0.7], groupGlass);
+    cyl(syringe, "piston", 0.025, 0.02, [x, 0.36, -0.7], white);
+    cyl(syringe, "plunger-rod", 0.006, 0.26, [x, 0.31, -0.7], steel);
+    cyl(syringe, "upper-valve", 0.03, 0.04, [x, 0.585, -0.7], steel);
+    for (const y of [0.34, 0.56])
+      box(syringe, `mount-${y}`, [0.12, 0.022, 0.1], [x, y, -0.7], steel);
+  }
+  label(
+    rearSyringes,
+    "rear-group-label",
+    "SYRINGE GROUP",
+    [1.0, 0.655, -0.756],
+    0.3,
+    0.035,
+  ).rotation.y = Math.PI;
   const syringes = group("syringes", anl);
   box(
     syringes,

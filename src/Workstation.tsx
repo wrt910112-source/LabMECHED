@@ -1,5 +1,11 @@
+import { DailyTasksPanel } from "./DailyTasksPanel";
 import { useEffect, useRef, useState } from "react";
-import { WeeklyPanel, WeeklyOverview, Photocal, type Weekly } from "./WeeklyTraining";
+import {
+  WeeklyPanel,
+  WeeklyOverview,
+  Photocal,
+  type Weekly,
+} from "./WeeklyTraining";
 import type { BottleStates } from "./detergents";
 import { asset } from "./data";
 import {
@@ -17,6 +23,7 @@ import {
 import "./workstation.css";
 import {
   DailyOverview,
+  DailyInstrumentControls,
   TemperatureRecord,
   StartCondition,
   ProbePractice,
@@ -47,8 +54,10 @@ export default function Workstation({
   onModel: (area: "probes" | "cups") => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [w2Open,setW2Open]=useState(false);
-  useEffect(()=>{if(weekly)setPage('周保養');},[!!weekly]);
+  const [w2Open, setW2Open] = useState(false);
+  useEffect(() => {
+    if (weekly) setPage("周保養");
+  }, [!!weekly]);
   const [page, setPage] = useState("Home"),
     [tab, setTab] = useState("Maintenance"),
     [message, setMessage] = useState("");
@@ -79,20 +88,34 @@ export default function Workstation({
       `已選取 ${name}。此版建立選單入口，詳細操作流程尚未加入；未執行儀器動作。`,
     );
   function perform(name: string) {
-    if(weekly){
-      if(name==='Replace Sample Probe'||name==='Replace Mix Bar'){
-        weekly.setView(name==='Replace Mix Bar'?'攪拌棒':'探針');
-        onWeeklyModel(name==='Replace Mix Bar'?'group-R1S':isIse?'ISE':'Sample-1');
-      }else notice(name);
+    if (weekly) {
+      if (name === "Replace Sample Probe" || name === "Replace Mix Bar") {
+        weekly.setView(name === "Replace Mix Bar" ? "攪拌棒" : "探針");
+        onWeeklyModel(
+          name === "Replace Mix Bar" ? "group-R1S" : isIse ? "ISE" : "Sample-1",
+        );
+      } else notice(name);
       return;
     }
     const result = daily.action(
       name,
-      isIse ? maintenance.ise : maintenance.analyzer,
+      daily.active
+        ? isIse
+          ? daily.instrument.iseMaintenance
+          : daily.instrument.analyzerMaintenance
+        : isIse
+          ? maintenance.ise
+          : maintenance.analyzer,
     );
     if (result !== null) setMessage(result);
     else notice(name);
   }
+  const iseEnabled = weekly
+    ? weekly.iseMaintenance
+    : daily.active
+      ? daily.instrument.iseMaintenance
+      : maintenance.ise;
+  const iseBusy = weekly ? weekly.busy : false;
   const rows = isIse ? iseRows : analyzerRows;
   return (
     <dialog
@@ -114,7 +137,7 @@ export default function Workstation({
           {weekly
             ? `周保養 · ${weekly.complete ? "已完成" : weekly.view}`
             : daily.active
-              ? `日保養 ${daily.completed.filter(Boolean).length}／9`
+              ? `日保養 ${daily.completed.filter(Boolean).length}／${daily.completed.length}`
               : ""}
         </span>
         <button
@@ -123,30 +146,29 @@ export default function Workstation({
         >
           {weekly ? "周保養" : "日保養"}
         </button>
-        {weekly && <button onClick={()=>onWeeklyModel(weekly.target)}>到模型操作</button>}
+        {weekly && (
+          <button onClick={() => onWeeklyModel(weekly.target)}>
+            到模型操作
+          </button>
+        )}
         {!weekly && daily.active && (
           <button onClick={() => onModel(isIse ? "cups" : "probes")}>
             到模型操作
           </button>
         )}
-        <button
-          onClick={() => navigate("Home")}
-        >
-          Home 主選單
-        </button>
+        <button onClick={() => navigate("Home")}>Home 主選單</button>
         <button className="ws-exit" onClick={onExit}>
           退出螢幕 ×
         </button>
       </header>
       <div className="ws-title">
-        <span>
-          {isMaintenance ? "Maintenance" : page}
-        </span>
-        <b>
-          {isMaintenance ? "User Maintenance" : "AU5800"}
-        </b>
+        <span>{isMaintenance ? "Maintenance" : page}</span>
+        <b>{isMaintenance ? "User Maintenance" : "AU5800"}</b>
       </div>
-      {weekly && page==='周保養' ? (
+      {!weekly && daily.active && page !== "日保養補充與檢查" && (
+        <DailyInstrumentControls d={daily} modes={false} />
+      )}
+      {weekly && page === "周保養" ? (
         <WeeklyOverview w={weekly} go={navigate} onModel={onWeeklyModel} />
       ) : page === "日保養" ? (
         <DailyOverview
@@ -163,10 +185,30 @@ export default function Workstation({
         />
       ) : page === "Start Condition" ? (
         <StartCondition d={daily} />
+      ) : page === "日保養補充與檢查" ? (
+        <>
+          <DailyInstrumentControls d={daily} />
+          <DailyTasksPanel
+            tasks={daily.tasks}
+            instrument={daily.instrument}
+            bottles={bottles}
+            command={(c) => setMessage(daily.taskAction(c))}
+            cover={(id, open) =>
+              daily.setInstrument((s) => ({ ...s, [id]: open }))
+            }
+            refill={(id) => setMessage(daily.refill(id))}
+            focus={onWeeklyModel}
+          />
+          <button onClick={() => navigate("日保養")}>返回日保養</button>
+        </>
       ) : page === "Reagent Management" ? (
         <ReagentManagement d={daily} notify={setMessage} />
       ) : page === "Rack Requisition" ? (
-        <RackRequisition d={daily} notify={setMessage} />
+        <RackRequisition
+          d={daily}
+          notify={setMessage}
+          canStart={!daily.active || daily.rackReady}
+        />
       ) : page === "Home" ? (
         <>
           <div className="ws-status-links">
@@ -427,12 +469,36 @@ export default function Workstation({
                     <label className="ws-enable">
                       <input
                         type="checkbox"
-                        checked={weekly ? weekly.maintenance : isIse ? maintenance.ise : maintenance.analyzer}
+                        checked={
+                          weekly
+                            ? isIse
+                              ? weekly.iseMaintenance
+                              : weekly.maintenance
+                            : daily.active
+                              ? isIse
+                                ? daily.instrument.iseMaintenance
+                                : daily.instrument.analyzerMaintenance
+                              : isIse
+                                ? maintenance.ise
+                                : maintenance.analyzer
+                        }
                         onChange={(e) =>
-                          weekly ? weekly.setMaintenance(e.target.checked) : setMaintenance({
-                            ...maintenance,
-                            [isIse ? "ise" : "analyzer"]: e.target.checked,
-                          })
+                          weekly
+                            ? isIse
+                              ? weekly.setIseMaintenance(e.target.checked)
+                              : weekly.setMaintenance(e.target.checked)
+                            : daily.active
+                              ? daily.setInstrument((s) => ({
+                                  ...s,
+                                  [isIse
+                                    ? "iseMaintenance"
+                                    : "analyzerMaintenance"]: e.target.checked,
+                                }))
+                              : setMaintenance({
+                                  ...maintenance,
+                                  [isIse ? "ise" : "analyzer"]:
+                                    e.target.checked,
+                                })
                         }
                       />
                       {page}
@@ -444,6 +510,14 @@ export default function Workstation({
                             name ? (
                               <button
                                 key={`${i}-${j}`}
+                                disabled={
+                                  isIse &&
+                                  (!iseEnabled ||
+                                    iseBusy ||
+                                    (!weekly &&
+                                      daily.active &&
+                                      daily.instrument.iseModule))
+                                }
                                 onClick={() => perform(name)}
                               >
                                 {name}
@@ -456,18 +530,38 @@ export default function Workstation({
                     </div>
                     {isIse && (
                       <div className="daily-cleaning-buttons">
-                        <button onClick={() => perform("Cleaning")}>
+                        <button
+                          disabled={
+                            iseEnabled ||
+                            iseBusy ||
+                            (!weekly &&
+                              daily.active &&
+                              daily.instrument.iseModule)
+                          }
+                          onClick={() => perform("Cleaning")}
+                        >
                           Cleaning
                         </button>
-                        <button onClick={() => perform("Cleaning (Enhanced)")}>
+                        <button
+                          disabled={
+                            iseEnabled ||
+                            iseBusy ||
+                            (!weekly &&
+                              daily.active &&
+                              daily.instrument.iseModule)
+                          }
+                          onClick={() => perform("Cleaning (Enhanced)")}
+                        >
                           Cleaning (Enhanced)
                         </button>
                       </div>
                     )}
                   </aside>
                 </div>
-              ) : weekly && tab==='Photocal Monitor' ? (
-                <div className="weekly-panel"><Photocal w={weekly}/></div>
+              ) : weekly && tab === "Photocal Monitor" ? (
+                <div className="weekly-panel">
+                  <Photocal w={weekly} />
+                </div>
               ) : isIse && tab === "Calibration" ? (
                 <Calibration d={daily} notify={setMessage} />
               ) : (
@@ -486,7 +580,12 @@ export default function Workstation({
                     : iseFooter
                   : analyzerFooter
                 ).map((name) => (
-                  <button key={name} onClick={() => weekly && name==='W2' ? setW2Open(true) : notice(name)}>
+                  <button
+                    key={name}
+                    onClick={() =>
+                      weekly && name === "W2" ? setW2Open(true) : notice(name)
+                    }
+                  >
                     {name}
                   </button>
                 ))}
@@ -506,7 +605,21 @@ export default function Workstation({
           <button onClick={() => navigate("Home")}>返回主選單</button>
         </div>
       )}
-      {weekly && w2Open && <div className="weekly-dialog" role="dialog" aria-label="W2 設定"><button onClick={()=>setW2Open(false)}>關閉 W2 設定</button><WeeklyPanel screen w={{...weekly,view:'Analyzer Maintenance',setView:()=>setW2Open(false)}} bottles={bottles} onFocus={onWeeklyModel}/></div>}
+      {weekly && w2Open && (
+        <div className="weekly-dialog" role="dialog" aria-label="W2 設定">
+          <button onClick={() => setW2Open(false)}>關閉 W2 設定</button>
+          <WeeklyPanel
+            screen
+            w={{
+              ...weekly,
+              view: "Analyzer Maintenance",
+              setView: () => setW2Open(false),
+            }}
+            bottles={bottles}
+            onFocus={onWeeklyModel}
+          />
+        </div>
+      )}
       <div className="ws-message" role="status">
         {message ||
           "教學介面 · 按 Home 返回主選單；按 Esc 或「退出螢幕」返回 3D 儀器。"}

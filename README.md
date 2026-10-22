@@ -1,5 +1,27 @@
-<<<<<<< HEAD
+ HEAD
 # AU5800 Learning Lab
+
+## 2026-10-22 日保養 v4
+
+新日保養測驗使用 `AU5800-2026-10-22-v4`，共十二組等權任務。新增十二瓶 CLN-1／Diluent／DET-1／DET-2 逐瓶補滿（Reagent Check 前）、前方四支及後方整組 syringe 的水氣與漏水檢查（Rack 前），以及 ISE Standard／Buffer／Reference 液量檢查（Prime／校正前）。Standard、Buffer 初始不足，須更換；Reference 初始足夠。液量是訓練示意，未推定實際容量或門檻。
+
+工作站的「日保養補充與檢查」提供同一份狀態的操作入口，模型亦可選 syringe／ISE 瓶子操作。瓶子需開對應櫃門；洗滌液沿用對應上蓋與 Maintenance 條件。ISE 瓶子更換會使 Prime 次數與校正失效，須重新做三次 Prime 及校正；洗滌液配置改變須重新 Reagent Check 並確認 Calibration Entry。考試會保存嘗試、異常及補正，不因事後補齊就追認先前無效操作。
+
+ISE Maintenance 未勾選時，右側 Maintenance 方格反黑停用，Cleaning 與校正可選；勾選後方格亮起，Cleaning 與校正停用。操作仍須符合停機、module 鐵蓋關閉等限制。未實作功能只顯示入口訊息，不產生完成證據。舊進行中的 v1／v2／v3 考試仍沿用原規則；已交卷成績不重算，周保養評分版本不變。
+
+ISE 上罩使用固定中央拱架與前後獨立 90° 開蓋，中層黑罩縮小；新增後方 syringe 櫃門、Sample probe／ISE probe 後方視角與 ISE 內部斜上方視角。選擇視角不自動開蓋。後方模型依後續確認呈現兩支 syringe，檢查維持整組記錄；細部尺寸及管路仍為示意。馬達必須先拔除兩個插頭再拆主體，先裝主體再接插頭；「全部裝回」分兩階段顯示。
+
+後續視角微調：杯子改由前側斜看並置中；馬達使用前側斜視、稍微退遠。Standard／Buffer 層架及瓶子同步下降，下方 Reference 櫃體縮短，避免瓶蓋被上方結構遮住。模型下方提供「開啟／關閉前方 syringe 櫃門」按鈕，日保養工具及新版考試儀器狀態亦提供相同開關，獨立於分析單元主蓋。評分版本與後方整組檢查方式維持不變。
+
+以下較早版本章節為開發歷程；最新日保養規則以上述 v4 為準。
+
+## 2026-10-21 日保養順序調整
+
+日保養只限制必要的先後關係：六支探針擦拭（A）→ 排水與攪拌檢查（B）；ISE Cleaning（C）→ 三次 Total Prime（D）→ ISE 校正與結果檢查。AB 與 CD 兩條流程可交錯，ABCD、ACBD、ACDB、CABD、CADB、CDAB 均可。試劑補充、紀錄與 All positions 不綁定校正，可提前完成。
+
+溫度、New Index、擦拭、排水／攪拌、Cleaning、三次 Prime、四杯校正及結果檢查、CLEAN 杯移除、試劑與 All positions 全部完成後，才可進行 Rack Requisition。練習會依這些條件開放 Start Entry／Entry；Cleaning 完成後仍可補做排水檢查。未開始日保養的自由選單導覽維持原操作方式。
+
+考試仍允許自由操作，但不符合必要順序的排水／攪拌、Prime、校正及 Rack 不計有效完成，錯誤留到交卷後顯示；補好前置項目後，須重新執行原本做早的操作。新日保養考試版本為 `AU5800-2026-10-21-v2`，舊 v1 考試沿用原規則，已交卷成績不重算；周保養仍用 v1。
 
 ## 周保養互動教學
 
@@ -160,4 +182,7 @@ Playwright 使用本機安裝的 Chrome 與 Edge，分別驗證 1366×768 和 19
 =======
 # LabMECHED
 digitalized laboratory instrument education platform
->>>>>>> 31b5ae4fa74b997ba29f56c2588c99a3fec40485
+ 31b5ae4fa74b997ba29f56c2588c99a3fec40485
+
+
+2026-10-21 操作更新：新日保養測驗採 v3，九瓶試劑由 Comment 欄「更換試劑」操作，Reagent Check 後產生 expired RB／Cal，再由 Rack Calibration 的 Entry 保存申請。溫度與 New Index 可任意排序，但須在 Reagent Check／Rack 前完成。ISE 校正時請關閉 ISE Maintenance 與 module 鐵蓋；黑色上蓋可以保持開啟。新周保養同步使用獨立蓋子狀態。既有進行中測驗沿用舊版本；須先交卷或放棄，再開始新測驗才能使用新規則。歷史成績不覆寫。

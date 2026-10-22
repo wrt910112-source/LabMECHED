@@ -1,4 +1,6 @@
+import { DailyTasksPanel } from "./DailyTasksPanel";
 import Workstation from "./Workstation";
+import ExamPortal from "./ExamPortal";
 import { useWeeklyTraining, WeeklyPanel } from "./WeeklyTraining";
 import { useDailyTraining } from "./DailyTraining";
 import { ModelPractice } from "./ModelPractice";
@@ -40,12 +42,13 @@ import {
   initialBottles,
   operateBottle,
   slotById,
-  slotPosition,
+  slotCamera,
   type CareMode,
   type BottleAction,
 } from "./detergents";
 
 export default function App() {
+  const [examOpen, setExamOpen] = useState(false);
   const [selected, setSelected] = useState<PartId>("overview"),
     [internal, setInternal] = useState(false),
     [labels, setLabels] = useState(true),
@@ -56,20 +59,25 @@ export default function App() {
     [photoIndex, setPhotoIndex] = useState(0),
     [activeView, setActiveView] = useState("front");
   const [workstationOpen, setWorkstationOpen] = useState(false);
-  const daily = useDailyTraining();
+
   const [modelPractice, setModelPractice] = useState(false),
     [practiceTarget, setPracticeTarget] = useState("R1-1");
   const [dailyRequest, setDailyRequest] = useState(0);
   const [modal, setModal] = useState<"help" | "photo" | "sources" | null>(null);
   const [doorState, setDoorState] = useState<DoorState>({ ...closedDoors });
   const [bottles, setBottles] = useState(initialBottles);
+  const daily = useDailyTraining(bottles, setBottles);
   const weekly = useWeeklyTraining(bottles, setBottles);
   const [weeklyOpen, setWeeklyOpen] = useState(false);
   useEffect(() => {
     if (!weeklyOpen) return;
     setInternal(weekly.lid);
-    setDoorState((s) => ({ ...s, "ise-top": weekly.lid, "ise-top-rear": weekly.lid }));
-  }, [weekly.lid, weeklyOpen, weekly.active]);
+    setDoorState((s) => ({
+      ...s,
+      "ise-top": weekly.iseTop,
+      "ise-top-rear": weekly.iseTop,
+    }));
+  }, [weekly.lid, weekly.iseTop, weeklyOpen, weekly.active]);
   const [iseState, setIseState] = useState<IseState>({
     open: false,
     removed: [],
@@ -104,14 +112,6 @@ export default function App() {
   const photo = photos[photoIndex] ?? p.photo;
   const select = useCallback((id: PartId) => {
     if (id === "console") setWorkstationOpen(true);
-    if (
-      id.startsWith("ise-") &&
-      id !== "ise-reagents" &&
-      id !== "ise-reference"
-    ) {
-      setIseState((s) => ({ ...s, open: true }));
-      setDoorState((s) => ({ ...s, "ise-top": true }));
-    }
     const part = partById[id];
     setSelected(id);
     setSelectedSlot(
@@ -126,7 +126,7 @@ export default function App() {
     setBottlePanel(id === "r1" || id === "r2" || id === "sample");
     setPhotoIndex(0);
     setActiveView(id === "overview" ? "front" : id);
-    if (part.internal) setInternal(true);
+
     setRequest((r) => ({
       eye: part.eye,
       target: part.target,
@@ -146,10 +146,9 @@ export default function App() {
               ? "mixing"
               : "ise-cups",
     );
-    setInternal(true);
   }
   function weeklyFocus(id: string) {
-    if(!id.startsWith('diag-'))weekly.setTarget(id);
+    if (!id.startsWith("diag-")) weekly.setTarget(id);
     if (slotById[id]) {
       selectSlot(id);
       setInternal(weekly.lid);
@@ -167,29 +166,66 @@ export default function App() {
               : "mixing",
     );
     setInternal(weekly.lid);
-    setDoorState((s) => ({ ...s, "ise-top": weekly.lid, "ise-top-rear": weekly.lid }));
-    if(id.startsWith('group-')){
-      const x=id==='group-R1S'?.426:1.115,z=id==='group-R1S'?-.29:-.17;
-      setRequest(r=>({eye:[x,weekly.view==='孔洞清潔'?1.42:1.3,z-.32],target:[x,.99,z],serial:r.serial+1}));
+    setDoorState((s) => ({
+      ...s,
+      "ise-top": weekly.iseTop,
+      "ise-top-rear": weekly.iseTop,
+    }));
+    if (id.startsWith("group-")) {
+      const x = id === "group-R1S" ? 0.426 : 1.115,
+        z = id === "group-R1S" ? -0.29 : -0.17;
+      setRequest((r) => ({
+        eye: [x, weekly.view === "孔洞清潔" ? 1.42 : 1.3, z - 0.32],
+        target: [x, 0.99, z],
+        serial: r.serial + 1,
+      }));
     }
-    if(id==='ISE')setRequest(r=>({eye:[-.4,1.48,-1.05],target:[-.04,1.09,-.44],serial:r.serial+1}));
-    if(id.startsWith('diag-')){
-      const x=id==='diag-ise'?.16:.77,z=id==='diag-front'?.67:id==='diag-ise'?.506:-.61;
-      setRequest(r=>({eye:[x,1.35,z+(z>0?.55:-.55)],target:[x,.94,z],serial:r.serial+1}));
+    if (id === "ISE")
+      setRequest((r) => ({
+        eye: [-0.4, 1.48, -1.05],
+        target: [-0.04, 1.09, -0.44],
+        serial: r.serial + 1,
+      }));
+    if (id.startsWith("diag-")) {
+      const x = id === "diag-ise" ? 0.16 : 0.77,
+        z = id === "diag-front" ? 0.67 : id === "diag-ise" ? 0.506 : -0.61;
+      setRequest((r) => ({
+        eye: [x, 1.35, z + (z > 0 ? 0.55 : -0.55)],
+        target: [x, 0.94, z],
+        serial: r.serial + 1,
+      }));
     }
   }
-  function weeklyModelAction(id:string){
-    if(id.startsWith('diag-')){weekly.runDiag(id.slice(5));return;}
-    if(id.startsWith('well-')){weekly.cleanWell(id);return;}
-    if(id.startsWith('lock-')||id.startsWith('tip-')){
-      const probe=id.replace(/^(lock|tip)-/,'');
-      weekly.setTarget(probe);weekly.setView('探針');
-      const n=weekly.progress[probe]||0;
-      if((id.startsWith('lock-')&&(n===0||n===6))||(id.startsWith('tip-')&&n>0&&n<6))weekly.step(probe);
-      else weekly.setMessage(n===7?'此探針已裝回鎖緊。':'請依順序操作鎖頭與探針。');
+  function weeklyModelAction(id: string) {
+    if (id.startsWith("diag-")) {
+      weekly.runDiag(id.slice(5));
       return;
     }
-    if(id.startsWith('group-')){weekly.setView('攪拌棒');weekly.cleanGroup(id.slice(6));return;}
+    if (id.startsWith("well-")) {
+      weekly.cleanWell(id);
+      return;
+    }
+    if (id.startsWith("lock-") || id.startsWith("tip-")) {
+      const probe = id.replace(/^(lock|tip)-/, "");
+      weekly.setTarget(probe);
+      weekly.setView("探針");
+      const n = weekly.progress[probe] || 0;
+      if (
+        (id.startsWith("lock-") && (n === 0 || n === 6)) ||
+        (id.startsWith("tip-") && n > 0 && n < 6)
+      )
+        weekly.step(probe);
+      else
+        weekly.setMessage(
+          n === 7 ? "此探針已裝回鎖緊。" : "請依順序操作鎖頭與探針。",
+        );
+      return;
+    }
+    if (id.startsWith("group-")) {
+      weekly.setView("攪拌棒");
+      weekly.cleanGroup(id.slice(6));
+      return;
+    }
     weeklyFocus(id);
   }
   function enterModel(area: "probes" | "cups") {
@@ -204,25 +240,25 @@ export default function App() {
     setSelectedSlot(id);
     setBottlePanel(true);
     setPhotoIndex(0);
-    setInternal(true);
     setActiveView(slot.module);
     setBottleMessage("");
-    const position = slotPosition(id);
-    setRequest((r) => ({
-      target: position,
-      eye: [
-        position[0] + 0.2,
-        1.38,
-        position[2] + (slot.module === "sample" ? -0.52 : 0.52),
-      ],
-      serial: r.serial + 1,
-    }));
+    setRequest((r) => ({ ...slotCamera(id), serial: r.serial + 1 }));
   }, []);
   const operate = (action: BottleAction) => {
     if (!selectedSlot || bottleBusy) return;
     try {
+      if (daily.active && !weeklyOpen) {
+        const ise = slotById[selectedSlot].module === "ise";
+        if (
+          ise
+            ? !daily.instrument.iseTop || !daily.instrument.iseMaintenance
+            : !daily.instrument.mainLid || !daily.instrument.analyzerMaintenance
+        )
+          throw new Error("請開啟對應上蓋並勾選對應 Maintenance。");
+      }
       const next = operateBottle(bottles, selectedSlot, careMode, action);
-      setBottles(next);
+      if (daily.active && !weeklyOpen) daily.supplyChanged(selectedSlot, next);
+      else setBottles(next);
       setBottleBusy(true);
       const label = slotById[selectedSlot].label;
       const result =
@@ -282,6 +318,15 @@ export default function App() {
         <span className="top-divider" />
         <span className="top-subtitle">生化組・數位學習空間</span>
         <div className="top-right">
+          <button
+            className="exam-entry"
+            onClick={() => {
+              setWorkstationOpen(false);
+              setExamOpen(true);
+            }}
+          >
+            登入／考試
+          </button>
           <span className="version">
             EXPLORER <b>01</b>
           </span>
@@ -440,10 +485,32 @@ export default function App() {
                 practice={modelPractice}
                 practiceTarget={practiceTarget}
                 onPracticeSelect={practiceSelect}
-                iseState={iseState}
-                doorState={doorState}
+                iseState={
+                  weeklyOpen
+                    ? { ...iseState, open: weekly.iseModule }
+                    : daily.active
+                      ? { ...iseState, open: daily.instrument.iseModule }
+                      : iseState
+                }
+                doorState={
+                  daily.active && !weeklyOpen
+                    ? {
+                        ...doorState,
+                        "ise-top": daily.instrument.iseTop,
+                        "ise-top-rear": daily.instrument.iseTop,
+                        "ise-middle": !!daily.instrument.iseReagents,
+                        "ise-bottom": !!daily.instrument.iseReference,
+                        "syringe-front": !!daily.instrument.frontSyringe,
+                        "syringe-rear": !!daily.instrument.rearSyringe,
+                      }
+                    : doorState
+                }
                 selected={selected}
-                internal={internal}
+                internal={
+                  daily.active && !weeklyOpen
+                    ? daily.instrument.mainLid
+                    : internal
+                }
                 labels={labels}
                 request={request}
                 onSelect={select}
@@ -661,8 +728,41 @@ export default function App() {
                       loader={
                         selected === "loader" || selected === "clean-solution"
                       }
-                      state={doorState}
+                      state={
+                        daily.active
+                          ? {
+                              ...doorState,
+                              "ise-top": daily.instrument.iseTop,
+                              "ise-top-rear": daily.instrument.iseTop,
+                              "ise-middle": !!daily.instrument.iseReagents,
+                              "ise-bottom": !!daily.instrument.iseReference,
+                            }
+                          : doorState
+                      }
                       onToggle={(id) => {
+                        if (daily.active) {
+                          const key = (
+                            {
+                              "ise-top": "iseTop",
+                              "ise-top-rear": "iseTop",
+                              "ise-middle": "iseReagents",
+                              "ise-bottom": "iseReference",
+                            } as const
+                          )[
+                            id as
+                              | "ise-top"
+                              | "ise-top-rear"
+                              | "ise-middle"
+                              | "ise-bottom"
+                          ];
+                          if (key) {
+                            daily.setInstrument((s) => ({
+                              ...s,
+                              [key]: !s[key],
+                            }));
+                            return;
+                          }
+                        }
                         setDoorState((d) => ({ ...d, [id]: !d[id] }));
                         if (id === "ise-top" && doorState[id])
                           setIseState((s) => ({ ...s, open: false }));
@@ -674,22 +774,72 @@ export default function App() {
                       selected !== "ise-reagents" &&
                       selected !== "ise-reference")) && (
                     <IsePanel
-                      state={iseState}
+                      state={
+                        daily.active
+                          ? { ...iseState, open: daily.instrument.iseModule }
+                          : iseState
+                      }
                       onChange={(s) => {
                         setIseState(s);
-                        if (s.open)
-                          setDoorState((d) => ({ ...d, "ise-top": true }));
-                        setInternal(true);
+                        if (daily.active)
+                          daily.setInstrument((old) => ({
+                            ...old,
+                            iseModule: s.open,
+                          }));
                       }}
                       selected={selected}
                       onSelect={select}
                     />
                   )}
-                  {selected === "syringes" && (
+                  {daily.active &&
+                    [
+                      "syringes",
+                      "rear-syringes",
+                      "ise-reagents",
+                      "ise-reference",
+                    ].includes(selected) && (
+                      <DailyTasksPanel
+                        section={
+                          selected.includes("syringes") ? "syringes" : "ise"
+                        }
+                        tasks={daily.tasks}
+                        instrument={daily.instrument}
+                        bottles={bottles}
+                        command={(c) => setBottleMessage(daily.taskAction(c))}
+                        cover={(id, open) =>
+                          daily.setInstrument((s) => ({ ...s, [id]: open }))
+                        }
+                        refill={(id) => setBottleMessage(daily.refill(id))}
+                        focus={(id) => select(id as PartId)}
+                      />
+                    )}
+                  {bottleMessage && daily.active && (
+                    <p role="status">{bottleMessage}</p>
+                  )}
+                  {selected === "syringes" && !daily.active && (
                     <SyringePanel
                       checks={syringeChecks}
                       setChecks={setSyringeChecks}
                     />
+                  )}
+                  {selected === "rear-syringes" && !daily.active && (
+                    <button
+                      onClick={() =>
+                        setDoorState((s) => ({
+                          ...s,
+                          [selected === "rear-syringes"
+                            ? "syringe-rear"
+                            : "syringe-front"]:
+                            !s[
+                              selected === "rear-syringes"
+                                ? "syringe-rear"
+                                : "syringe-front"
+                            ],
+                        }))
+                      }
+                    >
+                      開關 syringe 櫃門
+                    </button>
                   )}
                   <div className="photo-heading">
                     <span>
@@ -796,12 +946,58 @@ export default function App() {
               <button
                 className={`switch ${internal ? "checked" : ""}`}
                 role="switch"
-                aria-checked={internal}
+                aria-checked={
+                  daily.active && !weeklyOpen
+                    ? daily.instrument.mainLid
+                    : internal
+                }
                 aria-label="顯示內部構造"
-                onClick={() => setInternal((v) => !v)}
+                onClick={() =>
+                  daily.active && !weeklyOpen
+                    ? daily.setInstrument((s) => ({
+                        ...s,
+                        mainLid: !s.mainLid,
+                      }))
+                    : weeklyOpen
+                      ? weekly.setLid(!weekly.lid)
+                      : setInternal((v) => !v)
+                }
               >
                 <span>{internal && <Check size={12} />}</span>
               </button>
+              <div className="cabinet-toggles">
+                {(
+                  [
+                    ["frontSyringe", "syringe-front", "前方"],
+                    ["rearSyringe", "syringe-rear", "後方"],
+                  ] as const
+                ).map(([key, door, label]) => (
+                  <button
+                    key={key}
+                    className="cabinet-toggle"
+                    data-testid={`${key === "frontSyringe" ? "front" : "rear"}-syringe-toggle`}
+                    aria-pressed={
+                      daily.active && !weeklyOpen
+                        ? !!daily.instrument[key]
+                        : doorState[door]
+                    }
+                    onClick={() =>
+                      daily.active && !weeklyOpen
+                        ? daily.setInstrument((s) => ({ ...s, [key]: !s[key] }))
+                        : setDoorState((s) => ({ ...s, [door]: !s[door] }))
+                    }
+                  >
+                    {(
+                      daily.active && !weeklyOpen
+                        ? daily.instrument[key]
+                        : doorState[door]
+                    )
+                      ? "關閉"
+                      : "開啟"}
+                    {label} syringe 櫃門
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="learning-note">
               <ShieldCheck size={21} />
@@ -938,6 +1134,11 @@ export default function App() {
         bottles={bottles}
         onWeeklyModel={(id) => {
           setWorkstationOpen(false);
+          if (!weeklyOpen) {
+            if (slotById[id]) selectSlot(id);
+            else if (partById[id as PartId]) select(id as PartId);
+            return;
+          }
           weeklyFocus(id);
         }}
         daily={daily}
@@ -946,6 +1147,7 @@ export default function App() {
         open={workstationOpen}
         onExit={() => setWorkstationOpen(false)}
       />
+      <ExamPortal open={examOpen} onClose={() => setExamOpen(false)} />
     </div>
   );
 }

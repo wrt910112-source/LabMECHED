@@ -7,9 +7,23 @@ const toggle = (values: string[], id: string) =>
 export default function RackRequisition({
   d,
   notify,
+  onEntry,
+  exam = false,
+  canStart = true,
+  calibrationNeeds,
+  autoCalibration = false,
 }: {
-  d: Daily;
+  d: Pick<Daily, "rack" | "setRack">;
   notify: (s: string) => void;
+  onEntry?: (
+    type: string,
+    selection: RackSelection,
+    category: "calibration" | "qc" | "sample",
+  ) => void;
+  exam?: boolean;
+  canStart?: boolean;
+  calibrationNeeds?: Pick<RackSelection, "rb" | "cal">;
+  autoCalibration?: boolean;
 }) {
   const [tab, setTab] = useState("Sample"),
     [type, setType] = useState("Serum"),
@@ -18,7 +32,18 @@ export default function RackRequisition({
     [profile, setProfile] = useState(false),
     [profileTests, setProfileTests] = useState<string[]>([]),
     [sub, setSub] = useState("Test Requisition");
-  const current = editing ? draft : d.rack[type];
+  const autoSelect = (selection: RackSelection): RackSelection =>
+    tab === "Calibration" &&
+    type === "Serum" &&
+    autoCalibration &&
+    calibrationNeeds
+      ? {
+          ...selection,
+          rb: [...new Set([...selection.rb, ...calibrationNeeds.rb])],
+          cal: [...new Set([...selection.cal, ...calibrationNeeds.cal])],
+        }
+      : selection;
+  const current = editing ? draft : autoSelect(d.rack[type]);
   const key = tab === "QC" ? "qc" : "sample";
   function switchTab(n: string) {
     if (editing) {
@@ -31,7 +56,13 @@ export default function RackRequisition({
     setDraft((v) => ({ ...v, [k]: toggle(v[k], id) }));
   }
   function entry() {
-    d.setRack((v) => ({ ...v, [type]: draft }));
+    if (!canStart) {
+      notify("請先完成其他全部日保養項目，再進行 Rack Requisition。");
+      return;
+    }
+    if (onEntry)
+      onEntry(type, draft, tab === "Calibration" ? "calibration" : key);
+    else d.setRack((v) => ({ ...v, [type]: draft }));
     setEditing(false);
     notify(`${type} ${tab} 已 Entry 儲存選項；尚未執行量測。`);
   }
@@ -152,6 +183,14 @@ export default function RackRequisition({
                             rb={current.rb.includes(id)}
                             cal={current.cal.includes(id)}
                             select={select}
+                            expiredRb={
+                              type === "Serum" &&
+                              !!calibrationNeeds?.rb.includes(id)
+                            }
+                            expiredCal={
+                              type === "Serum" &&
+                              !!calibrationNeeds?.cal.includes(id)
+                            }
                           />
                         ))}
                       </tr>
@@ -204,7 +243,9 @@ export default function RackRequisition({
             >
               Exit
             </button>
-            <button onClick={entry}>Entry</button>
+            <button disabled={!canStart} onClick={entry}>
+              Entry
+            </button>
             <button onClick={() => notify("請直接在表格逐項選取。")}>
               Individual Requisition
             </button>
@@ -224,13 +265,19 @@ export default function RackRequisition({
         ) : (
           <>
             <button
+              disabled={!canStart}
               onClick={() => {
-                setDraft(structuredClone(d.rack[type]));
+                setDraft(structuredClone(autoSelect(d.rack[type])));
                 setEditing(true);
               }}
             >
               Start Entry
             </button>
+            {!canStart && (
+              <span role="status">
+                其他全部日保養項目完成後，才可開始 Rack Requisition。
+              </span>
+            )}
             <button
               onClick={() => notify("Display Cup Set 入口，杯架配置待補。")}
             >
@@ -305,10 +352,12 @@ export default function RackRequisition({
                   ))}
               </div>
             </div>
-            <p>
-              可複選群組；OK 套用至編輯中的清單，Entry 才儲存申請。ITA 與 URINE
-              TOXO 本次不使用。
-            </p>
+            {!exam && (
+              <p>
+                可複選群組；OK 套用至編輯中的清單，Entry 才儲存申請。ITA 與
+                URINE TOXO 本次不使用。
+              </p>
+            )}
             <footer>
               <button
                 onClick={() => {
@@ -332,11 +381,15 @@ function CalCells({
   rb,
   cal,
   select,
+  expiredRb = false,
+  expiredCal = false,
 }: {
   id: string;
   editing: boolean;
   rb: boolean;
   cal: boolean;
+  expiredRb?: boolean;
+  expiredCal?: boolean;
   select: (id: string, k: keyof RackSelection) => void;
 }) {
   return (
@@ -347,7 +400,8 @@ function CalCells({
           aria-label={`${id} RB`}
           aria-pressed={rb}
           disabled={!editing}
-          className={rb ? "rb-selected" : ""}
+          className={`${rb ? "rb-selected" : ""} ${expiredRb ? "stability-expired" : ""}`}
+          title={expiredRb ? "expired" : undefined}
           onClick={() => select(id, "rb")}
         >
           {rb ? "✓" : ""}
@@ -358,7 +412,8 @@ function CalCells({
           aria-label={`${id} Cal.`}
           aria-pressed={cal}
           disabled={!editing}
-          className={cal ? "cal-selected" : ""}
+          className={`${cal ? "cal-selected" : ""} ${expiredCal ? "stability-expired" : ""}`}
+          title={expiredCal ? "expired" : undefined}
           onClick={() => select(id, "cal")}
         >
           {cal ? "✓" : ""}

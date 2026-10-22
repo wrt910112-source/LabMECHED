@@ -1,5 +1,7 @@
 import * as T from "three";
 import type { Weekly } from "./WeeklyTraining";
+import type { ProbeState } from "../shared/exam";
+export type WeeklyVisual = Pick<Weekly, "target" | "view" | "lid" | "progress" | "wells" | "lastWell" | "swabReady" | "cup" | "batch" | "batchGroup" | "diag" | "pendingDiag" | "busy"> & { iseTop?: boolean; exam?: boolean; probeStates?: Record<string, ProbeState> };
 export function createWeeklyModel(root: T.Group) {
   const targets=new Map<string,T.Object3D>();
   const upperPlates:T.Mesh[]=[];
@@ -103,7 +105,7 @@ export function createWeeklyModel(root: T.Group) {
   });
   return {
     targets,
-    animate(w?: Weekly) {
+    animate(w?: WeeklyVisual) {
       upperPlates.forEach(plate=>{
         const material=plate.material as T.Material,fade=w?.view==='孔洞清潔';
         if(material.transparent!==fade){material.transparent=fade;material.needsUpdate=true;}
@@ -114,7 +116,7 @@ export function createWeeklyModel(root: T.Group) {
       if(well)cleaningSwab.position.copy(root.worldToLocal(well.getWorldPosition(new T.Vector3())));
       targets.forEach((object,id)=>{
         if(id.startsWith('well-')&&object instanceof T.Mesh){
-          (object.material as T.MeshStandardMaterial).color.set(w?.wells.includes(id)?'#39a882':'#34463e');
+          (object.material as T.MeshStandardMaterial).color.set(!w?.exam&&w?.wells.includes(id)?'#39a882':'#34463e');
         }
       });
       if (!w && highlighted.size) {
@@ -136,7 +138,8 @@ export function createWeeklyModel(root: T.Group) {
       for (const item of items) {
         const n = w?.progress[item.id] || 0;
         const probe = !!item.connector;
-        const removed = probe ? n >= 3 && n < 6 : n > 0 && n < 3;
+        const probeState = w?.probeStates?.[item.id];
+        const removed = probe ? probeState ? !probeState.installed : n >= 3 && n < 6 : n > 0 && n < 3;
         const batch = w?.batch && item.id.startsWith(w.batchGroup+'-')
           ? Math.sin(Math.min(1, (Date.now() - w.batch) / 2400) * Math.PI) *
             0.17
@@ -144,7 +147,7 @@ export function createWeeklyModel(root: T.Group) {
         item.o.position.y =
           item.base + (w ? (removed ? 0.16 : 0) + (!probe ? batch : 0) : 0);
         if (item.connector) {
-          item.connector.rotation.y = w && n > 0 && n < 7 ? Math.PI : 0;
+          item.connector.rotation.y = w && (probeState ? !probeState.locked : n > 0 && n < 7) ? Math.PI : 0;
         }
         if (item.swab)
           item.swab.visible = !!w && (probe ? n === 4 : !!batch);
@@ -165,7 +168,7 @@ export function createWeeklyModel(root: T.Group) {
             if (!highlighted.has(own))
               highlighted.set(own, own.emissive.clone());
             (child.material as T.MeshStandardMaterial).emissive.set(
-              w?.target === item.id ? "#294e38" : "#000000",
+              !w.exam && w.target === item.id ? "#294e38" : "#000000",
             );
           }
         });

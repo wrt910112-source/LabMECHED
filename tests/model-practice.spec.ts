@@ -1,3 +1,4 @@
+import { prepareDailyTasks } from "./daily-fixture";
 import { test, expect } from "@playwright/test";
 test("3D daily targets operate probes and ISE cups with shared workstation progress", async ({
   page,
@@ -24,6 +25,8 @@ test("3D daily targets operate probes and ISE cups with shared workstation progr
   await b("New Index").click();
   await home("Analyzer Maintenance");
   await screen.getByLabel("Analyzer Maintenance", { exact: true }).check();
+  await screen.getByLabel("主蓋開啟", { exact: true }).check();
+  await screen.getByLabel("ISE 上蓋開啟", { exact: true }).check();
   await b("Cleaning Probe").click();
   await b("到模型操作").click();
   const panel = page.locator(".model-practice");
@@ -59,6 +62,10 @@ test("3D daily targets operate probes and ISE cups with shared workstation progr
   await pb("放入裝滿 Cleaning Solution 的 CLEAN 杯").click();
   await expect(panel).toContainText("已裝滿");
   await pb("返回電腦繼續程序").click();
+  await prepareDailyTasks(page, screen);
+  await home("Analyzer Maintenance");
+  await b("ISE Maintenance").click();
+  await screen.getByLabel("ISE Maintenance", { exact: true }).uncheck();
   await b("Cleaning").click();
   await screen.getByLabel("ISE Maintenance", { exact: true }).check();
   for (let i = 0; i < 3; i++) await b("Total Prime").click();
@@ -77,6 +84,7 @@ test("3D daily targets operate probes and ISE cups with shared workstation progr
     path: `test-results/${info.project.name}-model-cups.png`,
   });
   await pb("返回電腦繼續程序").click();
+  await screen.getByLabel("ISE Maintenance", { exact: true }).uncheck();
   await b("Calibration").click();
   await b("Serum/Urine Start").click();
   await expect(screen.getByLabel("已檢查 Serum／Urine 數值")).toBeEnabled();

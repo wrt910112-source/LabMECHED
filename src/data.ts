@@ -1,5 +1,7 @@
 export type Vec3 = [number, number, number];
 export type PartId =
+  | "rear-syringes"
+  | "ise-internal"
   | "ise-reference"
   | "clean-solution"
   | "sample-track"
@@ -89,7 +91,7 @@ export const parts: Part[] = [
       "位於樣品架區與分析單元之間。外觀分為上層黑色探針罩、中層 Mid Standard／Buffer 黑色罩、下層 Reference 白色櫃門，三層可分別開啟。探針區內另有向左開啟的維護蓋，可觀察混合杯、T 型管與馬達。",
     photo: "ise.jpg",
     pages: "2–3、7、27–29、32",
-    target: [0.015, 0.65, 0.20],
+    target: [0.015, 0.65, 0.2],
     eye: [0.68, 1.24, 2.15],
     internal: true,
     tags: ["ISE", "樣品探針"],
@@ -105,8 +107,8 @@ export const parts: Part[] = [
     photo: "ise-reagents.jpg",
     extraPhotos: ["ise-reference.jpg"],
     pages: "27、29",
-    target: [0.015, 0.5, 0.34],
-    eye: [-0.4, 0.9, 1.5],
+    target: [0.015, 0.66, 0.78],
+    eye: [-0.35, 1.05, 1.75],
     internal: true,
     tags: ["MID · 黃", "BUFFER · 紅", "REF · 藍"],
   },
@@ -245,7 +247,7 @@ const iseDetails: Array<{
     en: "ISE maintenance cups",
     description:
       "由左至右：S-H（SEL-Na、CRS-H）、S-L（SEL-K、CRS-M）、U-H（CRS-L）、U-L（CLEAN）。位於 ISE 右側固定面板，名稱依提供照片。",
-    target: [0.171, 0.92, -0.18],
+    target: [0.171, 0.936, -0.19],
   },
   {
     id: "ise-mixing-cup",
@@ -269,7 +271,7 @@ const iseDetails: Array<{
     en: "ISE motor assembly",
     description:
       "混合杯上方的黑色馬達、支架與攪拌軸。馬達主體與兩個插頭分成獨立物件，可分別選取與示意拆裝。",
-    target: [-0.015, 0.94, -0.235],
+    target: [-0.015, 0.86, -0.235],
   },
   {
     id: "ise-plug-a",
@@ -295,7 +297,7 @@ iseDetails.forEach((p, i) =>
     number: String(13 + i),
     photo: "ise.jpg",
     pages: "待核對（依 2026-09-18 補充照片）",
-    eye: p.id === "ise-cups" ? [0.3, 1.22, 0.2] : [0.23, 1.4, 0.42],
+    eye: p.id === "ise-cups" ? [-0.1, 1.19, 0.21] : [0.21, 1.31, 0.53],
     internal: true,
     tags: ["ISE", p.id === "ise-cups" ? "4 個杯位" : "可拆裝部件"],
   }),
@@ -311,7 +313,7 @@ parts.push(
       "ISE 最下方白色櫃門內放置 ISE Reference。可獨立開關櫃門查看瓶子。",
     photo: "ise-reference.jpg",
     pages: "依補充照片；頁碼待核對",
-    target: [0.015, 0.23, 0.38],
+    target: [-0.068, 0.34, 0.38],
     eye: [0.36, 0.66, 1.45],
     internal: true,
     tags: ["Reference", "下層櫃門"],
@@ -346,12 +348,54 @@ parts.push(
     tags: ["Sample transport", "後方"],
   },
 );
+parts.push(
+  {
+    id: "rear-syringes",
+    parent: "analyzer",
+    name: "後方 syringe 組",
+    en: "Rear syringe group",
+    number: "22",
+    description:
+      "分析單元後方、Sample probe 下方櫃體有兩支 syringe，依使用者確認呈現。整組記錄水氣與漏水；細部尺寸及管路仍為示意。",
+    photo: "rear.jpg",
+    pages: "依使用者指定位置",
+    target: [1.0, 0.43, -0.7],
+    eye: [1.0, 0.76, -1.85],
+    tags: ["2 支 syringe", "水氣／漏水", "整組檢查"],
+  },
+  {
+    id: "ise-internal",
+    parent: "ise",
+    name: "ISE 模組內部",
+    en: "ISE internal components",
+    number: "23",
+    description:
+      "從前側斜上方退開觀察馬達、混合杯及管線；選取視角不會自動開蓋。",
+    photo: "ise.jpg",
+    pages: "依補充照片示意",
+    target: [-0.015, 0.86, -0.235],
+    eye: [0.21, 1.31, 0.53],
+    tags: ["馬達", "管線"],
+  },
+);
 export const partById = Object.fromEntries(
   parts.map((p) => [p.id, p]),
 ) as Record<PartId, Part>;
 export const views = [
   { id: "front", label: "整機", eye: [3.05, 2.55, 4.1], target: [0, 0.72, 0] },
   { id: "top", label: "俯視", eye: [0, 4.5, 0.05], target: [0, 0.7, 0] },
+  {
+    id: "sample-probe-rear",
+    label: "Sample probe 後方",
+    eye: [0.77, 1.55, -1.48],
+    target: [0.77, 1.01, -0.49],
+  },
+  {
+    id: "ise-probe-rear",
+    label: "ISE probe 後方",
+    eye: [-0.105, 1.4, -1.18],
+    target: [-0.105, 0.96, -0.43],
+  },
   { id: "rear", label: "後方", eye: [-2.6, 2.4, -3.5], target: [0, 0.8, 0] },
 ] satisfies { id: string; label: string; eye: Vec3; target: Vec3 }[];
 export const asset = (name: string) =>

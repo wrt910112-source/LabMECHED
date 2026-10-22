@@ -63,7 +63,8 @@ test("model navigation, internal view, photos and desktop layout", async ({
       .toBeTruthy();
   }
   await page.getByTestId("part-r1").click();
-  await expect(page.getByRole("switch")).toBeChecked();
+  await expect(page.getByRole("switch")).not.toBeChecked();
+  await page.getByRole("switch").click();
   await page.waitForTimeout(900);
   await page.screenshot({
     path: `test-results/${info.project.name}-r1.png`,

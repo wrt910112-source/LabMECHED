@@ -23,8 +23,10 @@ test("weekly maintenance completes with independent probe, rod, W2 and restorati
     .check();
   for (const id of ["R2-2", "R2-1", "R1-1", "R1-2"])
     await panel.getByLabel(`${id} 水氣檢查`).selectOption("正常");
-  await panel.getByLabel("Analyzer／ISE Maintenance 保養模式").check();
+  await panel.getByLabel("Analyzer Maintenance 保養模式").check();
   await panel.getByLabel("主蓋開啟").check();
+  await panel.getByLabel("ISE 上蓋開啟").check();
+  await panel.getByLabel("ISE Maintenance 保養模式", { exact: true }).check();
   await b("探針").click();
   for (const id of ["Sample-1", "Sample-2", "ISE"]) {
     await panel.getByRole("button", { name: `${id} 0/7`, exact: true }).click();
@@ -131,7 +133,9 @@ test("weekly maintenance completes with independent probe, rod, W2 and restorati
   }
   await b("取出用過的 CLEAN 杯").click();
   await panel.getByLabel("主蓋開啟").uncheck();
-  await panel.getByLabel("Analyzer／ISE Maintenance 保養模式").uncheck();
+  await panel.getByLabel("Analyzer Maintenance 保養模式").uncheck();
+  await panel.getByLabel("ISE Maintenance 保養模式", { exact: true }).uncheck();
+  await panel.getByLabel("ISE 上蓋開啟").uncheck();
   await expect(
     panel.getByRole("heading", { name: "周保養 · 已完成" }),
   ).toBeVisible();

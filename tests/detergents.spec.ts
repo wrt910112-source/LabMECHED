@@ -95,6 +95,8 @@ test("12 named wells, six resident bottles and replacement/refill rules", async 
     path: `test-results/${info.project.name}-wash-close.png`,
     fullPage: true,
   });
+  // Camera focus does not open the main cover; explicitly expose the recess.
+  await page.getByRole("switch").click();
   // Direct geometry hit within the focused recess, independent of DOM slot cards.
   const canvas = page.getByTestId("model-canvas"),
     bounds = (await canvas.boundingBox())!;

@@ -552,3 +552,13 @@
     font-size: 12px;
   }
 }
+
+.workstation button:disabled,
+.workstation button:disabled:hover {
+  background: #626a70;
+  color: #c4c9cc;
+  border-color: #565f65;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+}

@@ -1,8 +1,7 @@
 import type { DoorState } from "./enclosures";
-import { createWeeklyModel } from "./weeklyModel";
-import { weeklyWells, weeklyProbes, type Weekly } from "./WeeklyTraining";
-import type { Daily } from "./DailyTraining";
-import { createDailyModel } from "./dailyModel";
+import { createWeeklyModel, type WeeklyVisual } from "./weeklyModel";
+import { weeklyWells, weeklyProbes } from "./WeeklyTraining";
+import { createDailyModel, type DailyVisual } from "./dailyModel";
 import { practiceIds } from "./ModelPractice";
 import type { IseState } from "./iseModel";
 import { useEffect, useRef, useState } from "react";
@@ -19,9 +18,9 @@ export interface CameraRequest {
   serial: number;
 }
 interface Props {
-  weekly?: Weekly;
+  weekly?: WeeklyVisual;
   onWeeklySelect: (id: string) => void;
-  daily: Daily;
+  daily: DailyVisual;
   practice: boolean;
   practiceTarget: string;
   onPracticeSelect: (id: string) => void;
@@ -337,6 +336,10 @@ export default function Viewer(props: Props) {
         current.current.practice,
         performance.now(),
       );
+      const cupIds = ["S-H", "S-L", "U-H", "U-L"];
+      const cupMarkers = [...dailyModel.targets.entries()].filter(([id]) => cupIds.includes(id)).map(([id, {object, point}]) => ({id, v: object.localToWorld(point.clone()).project(camera)})).sort((a,b) => a.v.x-b.v.x);
+      const cupCenter = cupMarkers.reduce((n, p) => n + p.v.x, 0) / 4;
+      const cupTop = Math.min(...cupMarkers.map(p => (-p.v.y * .5 + .5) * el.clientHeight)) - 38;
       dailyModel.targets.forEach(({ object, point }, id) => {
         const button =
           practiceMarkers.current?.querySelector<HTMLButtonElement>(
@@ -356,8 +359,14 @@ export default function Viewer(props: Props) {
                 : ["S-H", "S-L", "U-H", "U-L"].includes(id);
         button.style.left = `${(v.x * 0.5 + 0.5) * el.clientWidth}px`;
         button.style.top = `${(-v.y * 0.5 + 0.5) * el.clientHeight}px`;
+        if (cupIds.includes(id)) {
+          const rank = cupMarkers.findIndex(p => p.id === id);
+          button.style.left = `${(cupCenter * .5 + .5) * el.clientWidth + (rank - 1.5) * 60}px`;
+          button.style.top = `${Math.max(48, cupTop)}px`;
+        }
         button.style.visibility =
           current.current.practice &&
+          (!["S-H", "S-L", "U-H", "U-L"].includes(id) || current.current.doorState["ise-top"]) &&
           same &&
           v.z < 1 &&
           Math.abs(v.x) < 0.95 &&
@@ -372,7 +381,7 @@ export default function Viewer(props: Props) {
         if(!button)return;
         const w=current.current.weekly,v=object.getWorldPosition(new T.Vector3()).project(camera);
         const wellGroup=w?.target.includes('R2')?'R2':'R1S';
-        const show=w && w.lid && (id.startsWith('diag-') ? !!w.pendingDiag : id.startsWith('well-') ? w.view==='孔洞清潔'&&id.startsWith(`well-${wellGroup}-`) : id.startsWith('group-') ? w.view==='攪拌棒' : w.view==='探針' && id.endsWith(w.target));
+        const show=w && (id.endsWith('ISE') || id==='diag-ise' ? w.iseTop ?? w.lid : w.lid) && (id.startsWith('diag-') ? w.exam || !!w.pendingDiag : id.startsWith('well-') ? w.view==='孔洞清潔'&&id.startsWith(`well-${wellGroup}-`) : id.startsWith('group-') ? w.view==='攪拌棒' : w.view==='探針' && id.endsWith(w.target));
         button.style.left=`${(v.x*.5+.5)*el.clientWidth}px`;button.style.top=`${(-v.y*.5+.5)*el.clientHeight}px`;
         button.style.visibility=show&&v.z<1&&v.z>-1?'visible':'hidden';
       });
@@ -452,14 +461,18 @@ export default function Viewer(props: Props) {
       ref={host}
       data-selected={props.selected}
       data-internal={props.internal}
+      data-ise-top={props.doorState["ise-top"]}
+      data-ise-module={props.iseState.open}
+      data-syringe-front={props.doorState["syringe-front"]}
+      data-syringe-rear={props.doorState["syringe-rear"]}
       data-slot={props.selectedSlot ?? ""}
     >
       {!error && (
         <div className="practice-markers weekly-markers" ref={weeklyMarkers}>
           {[...weeklyWells,...weeklyProbes.flatMap(id=>[`lock-${id}`,`tip-${id}`]),'group-R1S','group-R2','diag-front','diag-sample','diag-ise'].map(id=>{
             const probe=id.replace(/^(lock|tip)-/,'');const n=props.weekly?.progress[probe]||0;
-            const label=id.startsWith('well-')?`${props.weekly?.wells.includes(id)?'✓ ':''}${id.slice(5)}`:id.startsWith('lock-')?(n===6?'鎖緊鎖頭':'旋開鎖頭'):id.startsWith('tip-')?(['先旋開鎖頭','等待液體滴完','提起取出','擦拭 tip','鐵絲通探針孔','裝回探針','請鎖緊鎖頭','已完成'][n]):id.startsWith('group-')?`${id==='group-R1S'?'右側 12 支':'左側 6 支'}取下清潔並裝回`:`DIAG ${id.slice(5)}`;
-            return <button key={id} data-weekly-id={id} aria-label={`模型 ${id} ${label}`} title={label} aria-pressed={id.startsWith('well-')?props.weekly?.wells.includes(id):undefined} onClick={()=>props.onWeeklySelect(id)} disabled={props.weekly?.busy}>{id.startsWith('well-')?id.split('-').at(-1):label}</button>;
+            const label=props.weekly?.exam ? id.startsWith('lock-')?`${probe} 鎖頭`:id.startsWith('tip-')?`${probe} 探針`:id.startsWith('well-')?id.slice(5):id.startsWith('group-')?`${id==='group-R1S'?'右側 12 支':'左側 6 支'} mixer bar`:`DIAG ${id.slice(5)}` : id.startsWith('well-')?`${props.weekly?.wells.includes(id)?'✓ ':''}${id.slice(5)}`:id.startsWith('lock-')?(n===6?'鎖緊鎖頭':'旋開鎖頭'):id.startsWith('tip-')?(['先旋開鎖頭','等待液體滴完','提起取出','擦拭 tip','鐵絲通探針孔','裝回探針','請鎖緊鎖頭','已完成'][n]):id.startsWith('group-')?`${id==='group-R1S'?'右側 12 支':'左側 6 支'}取下清潔並裝回`:`DIAG ${id.slice(5)}`;
+            return <button key={id} data-weekly-id={id} aria-label={`模型 ${id} ${label}`} title={label} aria-pressed={!props.weekly?.exam&&id.startsWith('well-')?props.weekly?.wells.includes(id):undefined} onClick={()=>props.onWeeklySelect(id)} disabled={!props.weekly?.exam&&props.weekly?.busy}>{id.startsWith('well-')?id.split('-').at(-1):label}</button>;
           })}
         </div>
       )}

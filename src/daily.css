@@ -283,3 +283,34 @@
   height: 14px;
   border-left: 1px solid #39775a;
 }
+
+.daily-tasks-panel {
+  padding: 12px;
+  overflow: auto;
+}
+.daily-tasks-panel fieldset {
+  margin: 8px 0;
+  border: 1px solid #bdcec4;
+}
+.daily-task-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+}
+.daily-tasks-panel article {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid #dae3de;
+}
+.daily-tasks-panel label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 8px;
+}
+.daily-tasks-panel span {
+  margin-right: 8px;
+}

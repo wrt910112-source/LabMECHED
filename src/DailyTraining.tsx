@@ -1,78 +1,45 @@
+import {
+  initialDailyTasks,
+  tasksReadiness,
+  applyDailyTask,
+  recordSupply,
+  dailySteps,
+  supplyIds,
+  type DailyTaskCommand,
+} from "../shared/dailyTasks";
+import {
+  initialBottles,
+  operateBottle,
+  slotById,
+  type BottleStates,
+} from "./detergents";
+import { canRunIseProgram } from "../shared/dailyScenario";
 import { useState } from "react";
 import "./daily.css";
 import { emptyRack } from "./requisitionData";
+import { dailyProbes, initialReagents } from "../shared/maintenance";
+import {
+  initialInstrument,
+  canWipe,
+  canHandleCups,
+  canRunIse,
+} from "../shared/dailyScenario";
+import { dailyReadiness } from "../shared/dailyRules";
 
-export const probes = ["R1-1", "R1-2", "R2-1", "R2-2", "Sample-1", "Sample-2"];
+export const probes = dailyProbes;
 const cupNames = [
   "S-H · Serum High",
   "S-L · Serum Low",
   "U-H · Urine High",
   "U-L · Urine Low",
 ];
-const stepNames = [
-  "登記溫度",
-  "New Index",
-  "擦拭 6 支探針",
-  "排水與攪拌檢查",
-  "ISE Cleaning",
-  "Total Prime × 3",
-  "ISE 校正與結果檢查",
-  "試劑更換與 All positions",
-  "Rack Requisition · Calibration／Serum QC／Urine QC",
-];
-const initialReagents = () => [
-  {
-    name: "ALT",
-    side: "R1",
-    remaining: 0,
-    need: 100,
-    reason: "用完",
-    reviewed: false,
-    replaced: false,
-    note: "",
-  },
-  {
-    name: "ALT",
-    side: "R2",
-    remaining: 25,
-    need: 100,
-    reason: "量不足",
-    reviewed: false,
-    replaced: false,
-    note: "",
-  },
-  {
-    name: "AST",
-    side: "R1",
-    remaining: 180,
-    need: 100,
-    reason: "即將到期",
-    reviewed: false,
-    replaced: false,
-    note: "",
-  },
-  {
-    name: "AST",
-    side: "R2",
-    remaining: 180,
-    need: 100,
-    reason: "足夠",
-    reviewed: false,
-    replaced: false,
-    note: "",
-  },
-  {
-    name: "GLU",
-    side: "R1",
-    remaining: 220,
-    need: 120,
-    reason: "足夠",
-    reviewed: false,
-    replaced: false,
-    note: "",
-  },
-];
-export function useDailyTraining() {
+export function useDailyTraining(
+  bottles: BottleStates,
+  setBottles: (b: BottleStates) => void,
+) {
+  const [tasks, setTasks] = useState(initialDailyTasks);
+  const extra = tasksReadiness(tasks, bottles);
+  const [instrument, setInstrument] = useState(initialInstrument);
   const [rack, setRack] = useState(emptyRack);
   const [active, setActive] = useState(false);
   const [temp, setTemp] = useState({ bath: "", coolant: "", saved: false });
@@ -95,9 +62,6 @@ export function useDailyTraining() {
   });
   const [reagents, setReagents] = useState(initialReagents),
     [reagentChecked, setReagentChecked] = useState(false);
-  const inspected =
-    probes.every((p) => drains[p] === "正常") &&
-    ["左側", "右側"].every((p) => mix[p] === "正常");
   const reagentReady = reagents.every(
     (r) =>
       r.reviewed &&
@@ -105,22 +69,40 @@ export function useDailyTraining() {
       (r.reason === "足夠" || r.replaced) &&
       r.remaining >= r.need,
   );
-  const completed = [
-    temp.saved,
-    !!index,
-    wiped.length === 6,
-    inspected,
+  const rules = dailyReadiness({
+    temp,
+    index,
+    wiped,
+    drains,
+    mix,
     cleaned,
-    prime === 3,
-    cal.serum && cal.urine && cal.checked,
+    prime,
+    cal,
+    drops,
+    cleanCup,
+    reagentReady,
     reagentChecked,
-    reagentChecked &&
+  });
+  const rackReady =
+    rules.rackReady &&
+    extra.suppliesReady &&
+    extra.syringesReady &&
+    extra.iseReady;
+  const completed = [
+    ...rules.beforeRack,
+    extra.suppliesReady,
+    extra.syringesReady,
+    extra.iseReady,
+    rackReady &&
       rack.Serum.cal.length > 0 &&
       rack.Serum.qc.length > 0 &&
       rack.Urine.qc.length > 0,
   ];
   const stage = completed.findIndex((v) => !v);
   function reset() {
+    setTasks(initialDailyTasks());
+    setBottles(initialBottles());
+    setInstrument(initialInstrument());
     setRack(emptyRack());
     setActive(true);
     setTemp({ bath: "", coolant: "", saved: false });
@@ -152,20 +134,21 @@ export function useDailyTraining() {
     if (name === "Cleaning (Enhanced)")
       return "已建立 Cleaning (Enhanced) 入口；本次日保養使用 Cleaning，增強清洗程序待補。";
     if (!active) return "請先由「日保養」開始本次練習。";
-    if (name !== "Cleaning" && !enabled)
+    if (name === "Inspect Probe & Mixing Bar" && !enabled)
       return "請先勾選本頁的 Maintenance box。";
     if (name === "Cleaning Probe") {
-      if (stage < 2) return "請先登記溫度並建立 New Index。";
+      if (!canWipe(instrument)) return "請先開啟分析單元主蓋。";
       setMode("wipe");
       return "已進入 Cleaning Probe 教學操作，請逐支以酒精棉擦拭。";
     }
     if (name === "Inspect Probe & Mixing Bar") {
-      if (wiped.length !== 6) return "請先完成 6 支探針擦拭。";
+      if (!rules.canInspect) return "請先完成 6 支探針擦拭。";
       setMode("inspect");
       return "請逐支確認探針排水，並檢查左右攪拌單元。";
     }
     if (name === "Cleaning") {
-      if (!inspected) return "請先完成探針排水及攪拌檢查。";
+      if (!canRunIseProgram(instrument, "cleaning"))
+        return "請關閉 ISE module 鐵蓋並取消勾選 ISE Maintenance。";
       if (cleaned) return "本次 Cleaning 已完成。";
       if (cleanCup !== "full")
         return "請先在 U-L／CLEAN 位置放置裝滿 Cleaning Solution 的杯子。";
@@ -173,13 +156,70 @@ export function useDailyTraining() {
       setCleanCup("used");
       return "Cleaning 教學循環已完成；接著勾選 ISE Maintenance，執行三次 Total Prime。";
     }
-    if (!cleaned) return "請先完成 ISE Cleaning。";
+    if (!canRunIse(instrument))
+      return "請關閉 ISE module 鐵蓋並勾選 ISE Maintenance。";
+    if (!extra.iseReady)
+      return "請先檢查三瓶 ISE 試劑，並更換不足的 Standard 與 Buffer。";
+    if (!rules.canPrime) return "請先完成 ISE Cleaning。";
     if (prime === 3) return "本次 Total Prime 已完成 3／3 次。";
     setPrime((n) => Math.min(3, n + 1));
     return `Total Prime 教學循環完成 ${prime + 1}／3 次。`;
   }
+  function taskAction(command: DailyTaskCommand) {
+    if (!active) return "請先開始日保養練習。";
+    const next = structuredClone(tasks);
+    const error = applyDailyTask(next, command, instrument);
+    if (error) return error;
+    setTasks(next);
+    if (command.type === "ise-reagent" && command.value === "replace") {
+      setPrime(0);
+      setCal({ serum: false, urine: false, checked: false });
+    }
+    return "操作已記錄於本次練習。";
+  }
+  function supplyChanged(id: string, nextBottles: BottleStates) {
+    setBottles(nextBottles);
+    if (supplyIds.includes(id)) {
+      setTasks((old) => {
+        const next = structuredClone(old);
+        recordSupply(next, id);
+        return next;
+      });
+      setReagentChecked(false);
+      setRack((old) => ({ ...old, Serum: { ...old.Serum, rb: [], cal: [] } }));
+    }
+  }
+  function refill(id: string) {
+    if (!active) return "請先開始日保養練習。";
+    const ise = slotById[id].module === "ise";
+    if (
+      ise
+        ? !instrument.iseTop || !instrument.iseMaintenance
+        : !instrument.mainLid || !instrument.analyzerMaintenance
+    )
+      return "請開啟對應上蓋並勾選對應 Maintenance。";
+    try {
+      supplyChanged(
+        id,
+        operateBottle(bottles, id, "daily", { kind: "refill" }),
+      );
+      return "已補充至 100% 示意液量。";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }
   return {
+    tasks,
+    taskAction,
+    supplyChanged,
+    refill,
+    bottles,
+    ...extra,
     active,
+    instrument,
+    setInstrument,
+    cupAccessible: canHandleCups(instrument),
+    wipeAccessible: canWipe(instrument),
     temp,
     setTemp,
     editing,
@@ -207,6 +247,8 @@ export function useDailyTraining() {
     setReagents,
     reagentReady,
     reagentChecked,
+    ...rules,
+    rackReady,
     setReagentChecked,
     completed,
     stage,
@@ -222,29 +264,21 @@ export function DailyOverview({
   d: Daily;
   go: (p: string) => void;
 }) {
-  const routes = [
-    "Analyzer Status",
-    "Start Condition",
-    "Analyzer Maintenance",
-    "Analyzer Maintenance",
-    "ISE Maintenance",
-    "ISE Maintenance",
-    "ISE Maintenance",
-    "Reagent Management",
-    "Rack Requisition",
-  ];
   return (
     <section className="daily-page">
       <h2>日保養練習</h2>
       <p>
-        依本次提供程序操作。進度保留至重新整理；第 9 步需 Entry 儲存
+        清單編號供核對，非固定操作順序。擦拭後才檢查排水；Cleaning 後才
+        Prime；Cleaning 與三次 Prime
+        完成後才校正。試劑可隨時補充；其他項目全數完成後才可進行 Rack
+        Requisition。進度保留至重新整理；最後一組需 Entry 儲存
         Calibration、Serum QC 與 Urine QC。申請登記不代表已完成量測。
       </p>
       <button onClick={d.reset}>
         {d.active ? "重設並開始新一輪日保養" : "開始日保養"}
       </button>
       <ol className="daily-steps">
-        {stepNames.map((s, i) => (
+        {dailySteps.map(([s, route], i) => (
           <li key={s}>
             <span>
               {d.completed[i]
@@ -253,7 +287,12 @@ export function DailyOverview({
                   ? "目前步驟"
                   : "待完成"}
             </span>
-            <button disabled={!d.active} onClick={() => go(routes[i])}>
+            <button
+              disabled={
+                !d.active || (route === "Rack Requisition" && !d.rackReady)
+              }
+              onClick={() => go(route)}
+            >
               {i + 1}. {s}
             </button>
           </li>
@@ -273,7 +312,6 @@ export function TemperatureRecord({ d }: { d: Daily }) {
             type="number"
             step="0.1"
             value={d.temp[k]}
-            disabled={!!d.index}
             onChange={(e) =>
               d.setTemp({ ...d.temp, [k]: e.target.value, saved: false })
             }
@@ -310,7 +348,7 @@ export function StartCondition({ d }: { d: Daily }) {
           <input readOnly value={d.index || "尚未建立本次 Index"} />
         </label>
         <button
-          disabled={!d.active || !d.temp.saved || !d.editing || !!d.index}
+          disabled={!d.active || !d.editing || !!d.index}
           onClick={() => {
             d.setIndex(new Date().toLocaleString("zh-TW"));
             d.setEditing(false);
@@ -342,14 +380,12 @@ export function StartCondition({ d }: { d: Daily }) {
         </tbody>
       </table>
       <p>
-        {!d.temp.saved
-          ? "請先登記溫度，再按 Edit → New Index。"
-          : d.index
-            ? "已建立本次練習 Index。"
-            : "按 Edit 後選 New Index。"}
+        {d.index
+          ? "已建立本次練習 Index。"
+          : "按 Edit 後選 New Index；溫度可另行登記。"}
       </p>
       <button
-        disabled={!d.active || !d.temp.saved || !!d.index}
+        disabled={!d.active || !!d.index}
         onClick={() => d.setEditing(true)}
       >
         Edit
@@ -379,7 +415,7 @@ export function ProbePractice({ d }: { d: Daily }) {
             <b>{p}</b>
             {d.mode === "wipe" ? (
               <button
-                disabled={d.wiped.includes(p)}
+                disabled={!d.wipeAccessible || d.wiped.includes(p)}
                 onClick={() => d.setWiped((v) => [...v, p])}
               >
                 {d.wiped.includes(p) ? "已擦拭" : `酒精棉擦拭 ${p}`}
@@ -390,7 +426,7 @@ export function ProbePractice({ d }: { d: Daily }) {
                 <select
                   value={d.drains[p] || ""}
                   aria-label={`${p} 排水`}
-                  disabled={d.cleaned}
+                  disabled={!d.canInspect}
                   onChange={(e) =>
                     d.setDrains({ ...d.drains, [p]: e.target.value })
                   }
@@ -412,7 +448,7 @@ export function ProbePractice({ d }: { d: Daily }) {
               <select
                 value={d.mix[p] || ""}
                 aria-label={`${p} mixing bars`}
-                disabled={d.cleaned}
+                disabled={!d.canInspect}
                 onChange={(e) => d.setMix({ ...d.mix, [p]: e.target.value })}
               >
                 <option value="">未檢查</option>
@@ -443,13 +479,17 @@ export function IsePreparation({ d }: { d: Daily }) {
         · Total Prime {d.prime}／3
       </p>
       <button
-        disabled={!d.active || d.cleanCup !== "empty"}
+        disabled={
+          !d.active ||
+          !d.cupAccessible ||
+          !["empty", "discarded"].includes(d.cleanCup)
+        }
         onClick={() => d.setCleanCup("full")}
       >
         在 CLEAN 放置裝滿的 Cleaning Solution
       </button>
       <button
-        disabled={d.cleanCup !== "used" || d.prime !== 3}
+        disabled={!d.cupAccessible || !["full", "used"].includes(d.cleanCup)}
         onClick={() => d.setCleanCup("discarded")}
       >
         取出並丟棄 CLEAN 杯
@@ -465,7 +505,10 @@ export function IsePreparation({ d }: { d: Daily }) {
               min="0"
               step="1"
               disabled={
-                d.cleanCup !== "discarded" || d.cal.serum || d.cal.urine
+                !d.cupAccessible ||
+                d.cleanCup !== "discarded" ||
+                d.cal.serum ||
+                d.cal.urine
               }
               value={d.drops[i]}
               onChange={(e) =>
@@ -493,7 +536,9 @@ export function Calibration({
 }) {
   const ready =
     d.active &&
-    d.prime === 3 &&
+    canRunIse(d.instrument, true) &&
+    d.iseReady &&
+    d.canCalibrate &&
     d.cleanCup === "discarded" &&
     d.drops.every((n) => Number.isInteger(Number(n)) && Number(n) >= 10);
   const serum = [54.6, 53.8, -52.7, 0.985, 1.033, 0.983],
@@ -501,7 +546,7 @@ export function Calibration({
   function start(s: boolean, u: boolean) {
     if (!ready) {
       notify(
-        "請先完成三次 Total Prime、丟棄 CLEAN 杯，並放置四杯各至少 10 滴的校正液。",
+        "請關閉 ISE Maintenance 及 module 鐵蓋，完成 Cleaning、三次 Prime、丟棄 CLEAN 杯，並放置四杯各至少 10 滴的校正液。",
       );
       return;
     }
@@ -578,7 +623,11 @@ export function Calibration({
       <small>Normal Range 依照片重現，未用於實機放行判定。</small>
       <div className="daily-inline">
         {["Serum Start", "Urine Start", "Serum/Urine Start"].map((n, i) => (
-          <button key={n} onClick={() => start(i !== 1, i !== 0)}>
+          <button
+            key={n}
+            disabled={!canRunIseProgram(d.instrument, "calibration")}
+            onClick={() => start(i !== 1, i !== 0)}
+          >
             {n}
           </button>
         ))}
@@ -601,5 +650,73 @@ function FragmentHeaders() {
       <th colSpan={3}>Slope</th>
       <th colSpan={3}>MID Solution Factor</th>
     </>
+  );
+}
+
+export function DailyInstrumentControls({
+  d,
+  modes = true,
+}: {
+  d: Daily;
+  modes?: boolean;
+}) {
+  return (
+    <fieldset className="daily-inline daily-instrument">
+      <legend>儀器狀態</legend>
+      {(modes
+        ? ([
+            ["analyzerMaintenance", "Analyzer Maintenance"],
+            ["iseMaintenance", "ISE Maintenance"],
+          ] as const)
+        : []
+      ).map(([key, label]) => (
+        <label key={key}>
+          <input
+            type="checkbox"
+            checked={d.instrument[key]}
+            onChange={(e) =>
+              d.setInstrument((s) => ({ ...s, [key]: e.target.checked }))
+            }
+          />
+          {label}
+        </label>
+      ))}
+      {(
+        [
+          ["iseTop", "ISE 上蓋開啟"],
+          ["iseModule", "ISE module 蓋開啟"],
+          ["mainLid", "主蓋開啟"],
+        ] as const
+      ).map(([key, label]) => (
+        <label key={key}>
+          <input
+            type="checkbox"
+            checked={d.instrument[key]}
+            onChange={(e) =>
+              d.setInstrument((s) => ({ ...s, [key]: e.target.checked }))
+            }
+          />
+          {label}
+        </label>
+      ))}
+      <div className="cabinet-toggles">
+        {(
+          [
+            ["frontSyringe", "front", "前方"],
+            ["rearSyringe", "rear", "後方"],
+          ] as const
+        ).map(([key, id, label]) => (
+          <button
+            key={key}
+            data-testid={`practice-${id}-syringe-toggle`}
+            aria-pressed={!!d.instrument[key]}
+            onClick={() => d.setInstrument((s) => ({ ...s, [key]: !s[key] }))}
+          >
+            {d.instrument[key] ? "關閉" : "開啟"}
+            {label} syringe 櫃門
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }

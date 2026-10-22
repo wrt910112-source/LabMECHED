@@ -8,31 +8,14 @@ import {
   type BottleAction,
 } from "./detergents";
 import "./weekly.css";
+import { detailedProbes, mixerIds, mixerGroupIds, wellIds, w2Positions, probeOperationNames } from "../shared/maintenance";
 
-export const weeklyProbes = ["Sample-1", "Sample-2", "ISE"];
-export const weeklyRods = Array.from({ length: 18 }, (_, i) =>
-  i < 12 ? `R1S-${i + 1}` : `R2-${i - 11}`,
-);
-export const mixerGroups = ['R1S','R2'] as const;
-export const weeklyWells = weeklyRods.map(id=>`well-${id}`);
-export const w2Slots = [
-  "r2-outer-3",
-  "r2-inner-3",
-  "r1-inner-3",
-  "r1-outer-3",
-  "sample-left-1",
-  "sample-right-1",
-  "ise-wash-1",
-];
-const probeSteps = [
-  "旋開鎖頭",
-  "等待液體滴完",
-  "提起取出",
-  "酒精棉擦拭 tip",
-  "鐵絲通探針孔",
-  "裝回探針",
-  "鎖緊鎖頭",
-];
+export const weeklyProbes = detailedProbes;
+export const weeklyRods = mixerIds;
+export const mixerGroups = mixerGroupIds;
+export const weeklyWells = wellIds;
+export const w2Slots = w2Positions;
+const probeSteps = Object.values(probeOperationNames).map(name => name === "擦拭 tip" ? "酒精棉擦拭 tip" : name);
 type Result = "" | "正常" | "異常";
 export function useWeeklyTraining(
   bottles: BottleStates,
@@ -44,6 +27,7 @@ export function useWeeklyTraining(
   const [prepared, setPrepared] = useState(false),
     [lid, setLid] = useState(false),
     [maintenance, setMaintenance] = useState(false);
+  const [iseTop, setIseTop] = useState(false), [iseModule, setIseModule] = useState(false), [iseMaintenance, setIseMaintenance] = useState(false);
   const [progress, setProgress] = useState<Record<string, number>>({}),
     [damage, setDamage] = useState<Record<string, Result>>({});
   const [syringes, setSyringes] = useState<Record<string, Result>>({}),
@@ -97,8 +81,8 @@ export function useWeeklyTraining(
     restored &&
     !cup &&
     diluent.length === 2 &&
-    !lid &&
-    !maintenance &&
+    !lid && !iseTop && !iseModule &&
+    !maintenance && !iseMaintenance &&
     probesDone &&
     rodsDone && wellsDone;
   useEffect(() => {
@@ -115,7 +99,7 @@ export function useWeeklyTraining(
   }, [batch,batchGroup]);
   function cleanGroup(group:string){if(!ready||!lid||!maintenance||busy||!mixerGroups.includes(group as 'R1S'|'R2'))return;setBatchGroup(group);setBatch(Date.now());setMix(v=>v==='異常'?v:'');setDiag('');setPendingDiag('');}
   function cleanWell(id:string){if(!weeklyWells.includes(id))return;setTarget(id);if(!ready||!lid||!maintenance||busy||!swabReady||!weeklyRods.every(id=>progress[id]===3)){setMessage('請先完成左右兩組攪拌棒清潔、開蓋並讓棉棒沾取 Cleaning Solution。');return;}setWells(p=>p.includes(id)?p:[...p,id]);setLastWell(id);setMessage(`已清潔 ${id.replace('well-','')} 孔洞`);}
-  function runDiag(region:string){const expected=pendingDiag==='ISE'?'ise':pendingDiag==='mix'?'front':'sample';if(!maintenance||busy||!pendingDiag||region!==expected){setMessage('請先在對應 Maintenance 設定並確認程序，再按正確位置的 DIAG。');return;}setDiag(pendingDiag);setPendingDiag('');setMessage('DIAG 已啟動示意，請記錄檢查結果。');}
+  function runDiag(region:string){const expected=pendingDiag==='ISE'?'ise':pendingDiag==='mix'?'front':'sample';if((pendingDiag==='ISE'?!iseMaintenance:!maintenance)||busy||!pendingDiag||region!==expected){setMessage('請先在對應 Maintenance 設定並確認程序，再按正確位置的 DIAG。');return;}setDiag(pendingDiag);setPendingDiag('');setMessage('DIAG 已啟動示意，請記錄檢查結果。');}
   useEffect(() => {
     if (phase !== "w2" && phase !== "photocal") return;
     const timer = setInterval(
@@ -136,7 +120,7 @@ export function useWeeklyTraining(
     }
   }, [remaining, phase]);
   function step(id: string) {
-    if (!ready || !lid || !maintenance || busy) return;
+    if (!ready || (id === "ISE" ? !iseTop || !iseMaintenance : !lid || !maintenance) || busy) return;
     setProgress((p) => ({
       ...p,
       [id]: Math.min((p[id] || 0) + 1, weeklyProbes.includes(id) ? 7 : 3),
@@ -144,7 +128,7 @@ export function useWeeklyTraining(
     setDiag("");
   }
   function bottle(id: string, action: BottleAction) {
-    if (!maintenance || !lid || busy) {
+    if ((slotById[id].module === "ise" ? !iseMaintenance || !iseTop : !maintenance || !lid) || busy) {
       setMessage("請進入保養模式並開蓋，運轉中不能更換瓶子。");
       return;
     }
@@ -171,12 +155,12 @@ export function useWeeklyTraining(
       !cup ||
       !photo ||
       !enhanced ||
-      lid ||
-      !maintenance ||
+      lid || iseModule ||
+      !maintenance || !iseMaintenance ||
       busy
     ) {
       setMessage(
-        '尚未符合：'+[!ready&&'準備及四支 syringe 檢查',!probesDone&&'三支探針裝回鎖緊與排水檢查',!rodsDone&&'兩組攪拌棒及 DIAG 檢查',!wellsDone&&'18 孔清潔',!w2Ready&&'七瓶同種滿瓶 W2、Sample DET-2 空槽與 ISE DET-2 保留',!cup&&'CLEAN 滿杯',!photo&&'勾選 Photocal',!enhanced&&'勾選 ISE Cleaning (Enhanced)',lid&&'關閉主蓋',!maintenance&&'進入保養模式',busy&&'等待目前程序結束'].filter(Boolean).join('、')+'。',
+        '尚未符合：'+[!ready&&'準備及四支 syringe 檢查',!probesDone&&'三支探針裝回鎖緊與排水檢查',!rodsDone&&'兩組攪拌棒及 DIAG 檢查',!wellsDone&&'18 孔清潔',!w2Ready&&'七瓶同種滿瓶 W2、Sample DET-2 空槽與 ISE DET-2 保留',!cup&&'CLEAN 滿杯',!photo&&'勾選 Photocal',!enhanced&&'勾選 ISE Cleaning (Enhanced)',lid&&'關閉主蓋',iseModule&&'關閉 ISE module 鐵蓋',(!maintenance||!iseMaintenance)&&'進入 Analyzer 與 ISE 保養模式',busy&&'等待目前程序結束'].filter(Boolean).join('、')+'。',
       );
       return;
     }
@@ -190,6 +174,7 @@ export function useWeeklyTraining(
     setTarget("syringes");
     setPrepared(false);
     setLid(false);
+    setIseTop(false); setIseModule(false); setIseMaintenance(false);
     setMaintenance(false);
     setProgress({});
     setDamage({});
@@ -220,6 +205,7 @@ export function useWeeklyTraining(
     setPrepared,
     lid,
     setLid,
+    iseTop, setIseTop, iseModule, setIseModule, iseMaintenance, setIseMaintenance,
     maintenance,
     setMaintenance,
     progress,
@@ -343,13 +329,16 @@ export function WeeklyPanel({
       </>}
       {screen && <p role="status">{w.message}</p>}
       <fieldset disabled={!w.active || w.busy}>
+        <label><input type="checkbox" checked={w.iseMaintenance} onChange={e => w.setIseMaintenance(e.target.checked)} />ISE Maintenance 保養模式</label>
+        <label><input type="checkbox" checked={w.iseTop} onChange={e => w.setIseTop(e.target.checked)} />ISE 上蓋開啟</label>
+        <label><input type="checkbox" checked={w.iseModule} onChange={e => w.setIseModule(e.target.checked)} />ISE module 蓋開啟</label>
         <label>
           <input
             type="checkbox"
             checked={w.maintenance}
             onChange={(e) => w.setMaintenance(e.target.checked)}
           />
-          Analyzer／ISE Maintenance 保養模式
+          Analyzer Maintenance 保養模式
         </label>
         <label>
           <input
@@ -409,8 +398,7 @@ export function WeeklyPanel({
               <button
                 disabled={
                   !w.ready ||
-                  !w.lid ||
-                  !w.maintenance ||
+                  (w.target === "ISE" ? !w.iseTop || !w.iseMaintenance : !w.lid || !w.maintenance) ||
                   w.busy ||
                   w.progress[w.target] === 7
                 }
@@ -444,7 +432,7 @@ export function WeeklyPanel({
               </label>
               <button
                 disabled={
-                  !w.maintenance ||
+                  (w.target === "ISE" ? !w.iseMaintenance : !w.maintenance) ||
                   w.busy ||
                   w.progress[w.target] !== 7 ||
                   w.count < 3 ||
@@ -555,7 +543,7 @@ export function WeeklyPanel({
             </div>
           ))}
           <button
-            disabled={w.busy || !w.lid || !w.maintenance}
+            disabled={w.busy || !w.iseTop}
             onClick={() => {
               onFocus("U-L");
               w.setCup(!w.cup);
