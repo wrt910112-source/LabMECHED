@@ -1,3 +1,4 @@
+import { iseFrontInset, iseCabinetFront, reagentZ } from "./iseLayout";
 import * as T from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { PartId } from "./data";
@@ -124,23 +125,28 @@ export function createEnclosures(
     ["ise-top-rear", -1],
   ] as const) {
     const top = door(id, ise, [0.015, 1.27, sign * 0.075]);
-    box(top, "smoked-top", 0.435, 0.018, 0.465, 0, 0, sign * 0.238, dark);
-    box(top, "smoked-end", 0.427, 0.3, 0.018, 0, -0.159, sign * 0.47, dark);
+    const depth = sign === 1 ? 0.465 - iseFrontInset : 0.465;
+    const center = sign * (0.0055 + depth / 2);
+    const end = sign * (0.005 + depth);
+    box(top, "smoked-top", 0.435, 0.018, depth, 0, 0, center, dark);
+    box(top, "smoked-end", 0.427, 0.3, 0.018, 0, -0.159, end, dark);
     for (const x of [-0.21, 0.21])
-      box(
-        top,
-        `smoked-side-${x}`,
-        0.014,
-        0.3,
-        0.465,
-        x,
-        -0.159,
-        sign * 0.238,
-        dark,
-      );
-    box(top, "top-grip", 0.21, 0.016, 0.021, 0, -0.297, sign * 0.481, steel);
+      box(top, `smoked-side-${x}`, 0.014, 0.3, depth, x, -0.159, center, dark);
+    box(
+      top,
+      "top-grip",
+      0.21,
+      0.016,
+      0.021,
+      0,
+      -0.297,
+      sign * (0.016 + depth),
+      steel,
+    );
   }
   const reagents = groups.get("ise-reagents")!;
+  // Move the complete bottle bay together: hood hinge, tray, jugs and tubing.
+  reagents.position.z = -iseFrontInset;
   const reagentSmoke = new T.MeshPhysicalMaterial({
     color: "#182128",
     transparent: true,
@@ -226,7 +232,17 @@ export function createEnclosures(
   box(mid, "middle-hinge-strip", 0.3, 0.014, 0.023, 0, 0, 0, steel);
   box(mid, "middle-grip", 0.24, 0.016, 0.022, 0, -0.426, 0.417, steel);
   // Three-bay tray projects forward of the upper module, as on the reference photos.
-  box(ise, "middle-shelf", 0.45, 0.019, 0.43, 0.015, 0.43, 0.775, steel);
+  box(
+    ise,
+    "middle-shelf",
+    0.45,
+    0.019,
+    0.43,
+    0.015,
+    0.43,
+    reagentZ(0.775),
+    steel,
+  );
   box(reagents, "reagent-tray-front", 0.46, 0.035, 0.028, 0.015, 0.427, 0.986);
   for (const x of [-0.213, 0.243])
     cheek(
@@ -350,12 +366,18 @@ export function createEnclosures(
     white,
   );
   const ref = register("ise-reference", ise);
-  const bottom = door("ise-bottom", ref, [-0.201, 0.06, 0.578]);
+  const bottom = door("ise-bottom", ref, [
+    -0.201,
+    0.06,
+    iseCabinetFront - 0.011,
+  ]);
   box(bottom, "reference-door", 0.431, 0.35, 0.022, 0.2155, 0.175, 0);
   box(bottom, "reference-grip", 0.15, 0.012, 0.019, 0.24, 0.326, 0.019, steel);
-  box(ise, "reference-shelf", 0.416, 0.018, 0.51, 0.015, 0.101, 0.307, steel);
+  box(ise, "reference-shelf", 0.416, 0.018, 0.68, 0.015, 0.101, 0.392, steel);
   const loader = groups.get("loader")!;
   const clean = register("clean-solution", loader);
+  clean.scale.x = 0.84;
+  clean.position.x = -1.0615 * (1 - clean.scale.x);
   for (const x of [-1.049, -0.315])
     box(clean, `cabinet-wall-${x}`, 0.025, 0.706, 1.36, x, 0.43, 0.018);
   box(clean, "cabinet-back", 0.759, 0.706, 0.025, -0.682, 0.43, -0.65);
@@ -454,7 +476,9 @@ export function createEnclosures(
             ? -Math.PI / 2
             : id === "ise-middle"
               ? -1.92
-              : id === "ise-bottom" || id === "syringe-rear"
+              : id === "ise-bottom" ||
+                  id === "syringe-rear" ||
+                  id === "syringe-front"
                 ? -1.6
                 : 1.6;
       g.rotation[axis] = T.MathUtils.lerp(

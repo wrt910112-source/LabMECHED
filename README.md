@@ -1,4 +1,14 @@
  HEAD
+
+## 2026-10-27 工作站與流程修正
+
+目前練習與新日保養考試採 `AU5800-2026-10-27-v5`，新周保養考試採 `AU5800-weekly-2026-10-27-v3`。探索、練習、考試共用原灰藍工作站版面；Maintenance 清單恢復完整高度，Inspect 使用獨立子工作區，儀器狀態改為外層 HUD 可收合面板。
+
+試劑在 Reagent Management → Details 的 Comment 欄逐瓶更換：ALT／AST／HDL／LDL／CRE 各 R1、R2，加上即將到期的 AMY R1，共十一瓶。無須註記或另外勾選用量檢查。有效 Reagent Check 顯示 RB 六項（ALT、AST、HDL、LDL、CRE、AMY）及 Cali 三項（HDL、LDL、CRE）；Entry 僅登記，不重設 expired。
+
+ISE DET 操作不再要求 ISE Maintenance，但仍須開啟黑蓋並停止運轉。日保養新增 ISE Maintenance → Replace Sample Probe → DIAG → 正常排水紀錄；不依賴六支分析探針擦拭，納入原排水／攪拌組成九個子項，總數仍十二組。QC Start Entry 建立 Serum／Urine 兩類草稿，可切換 Type，最後一次 Entry 原子保存兩類；失敗保留草稿，以相同事件 ID 重試。
+
+舊進行中考試保留原版本情境、操作限制及完成標準，已交卷結果不重算；不需資料表遷移。練習仍只保存在本次頁面記憶體。詳見 [工作站交付紀錄](WORKSTATION_V5_DELIVERY.md)。以下較早章節為歷程，與本節衝突時以本節為準。
 # AU5800 Learning Lab
 
 ## 2026-10-22 日保養 v4
@@ -186,3 +196,16 @@ digitalized laboratory instrument education platform
 
 
 2026-10-21 操作更新：新日保養測驗採 v3，九瓶試劑由 Comment 欄「更換試劑」操作，Reagent Check 後產生 expired RB／Cal，再由 Rack Calibration 的 Entry 保存申請。溫度與 New Index 可任意排序，但須在 Reagent Check／Rack 前完成。ISE 校正時請關閉 ISE Maintenance 與 module 鐵蓋；黑色上蓋可以保持開啟。新周保養同步使用獨立蓋子狀態。既有進行中測驗沿用舊版本；須先交卷或放棄，再開始新測驗才能使用新規則。歷史成績不覆寫。
+
+
+## 全螢幕模擬器 HUD
+
+開啟平台後預設為自由探索。點選模型或「部件目錄」只選取部件；在右側「認識／操作／實機照片」卡片查看資訊或執行可用操作，按「聚焦部件」才移動鏡頭。左鍵旋轉、右鍵平移、滾輪縮放；底部提供視角、重設與標籤工具。`Q` 開啟任務中心；輸入欄位內不啟用場景快捷鍵。
+
+任務中心提供日／周保養的練習與考試。雙周及障礙排除仍為尚未開放。練習 Quest Log 讀取既有任務名稱、完成狀態與可操作條件；選取、定位及開啟面板不計完成。返回探索保留本次頁面內的練習，重新開始需確認；重新整理不保留練習進度。自由探索、日練習、周練習的模型、瓶槽、瓶槽配置與工作站畫面分開，互不改寫。
+
+考試沿用帳號與 SQLite 保存、原評分版本及交卷結果，HUD 只呈現已完成組數，不提供下一步、答案標記或即時分數。`Attempt.progress` 為後端既有評分檢核產生的 `{ completedGroups, totalGroups }`。進出工作站保留頁面與草稿，不重設開始時間；Esc 先離開輸入焦點，再返回場景。失敗保存仍保留重試功能。
+
+主要介面組件為 `SimulatorHud.tsx`、`ContextCovers.tsx` 及 `hud.css`，`hudTasks.ts` 是既有日／周流程的唯讀呈現層。3D 仍使用既有 Three.js 模型，沒有以示範圖替代場景。
+
+驗證指令：`npm run build`、`npm run test:server`，以及 `npx playwright test tests/hud.spec.ts tests/daily.spec.ts tests/weekly.spec.ts tests/exam.spec.ts`。測試使用獨立暫存資料庫，不在正式學員資料庫建立測試帳號。原始 HUD 截圖保存於 `test-results/*-hud-*.png`；交付副本在 `artifacts/hud/`。完整修改與驗證說明見 [HUD_DELIVERY.md](HUD_DELIVERY.md)。

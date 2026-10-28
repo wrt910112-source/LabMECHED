@@ -16,6 +16,7 @@ import {
   advanceEngine,
   applyCommand,
   scoreAttempt,
+  attemptProgress,
   versionForKind,
   supportsVersion,
 } from "../shared/exam.ts";
@@ -134,6 +135,12 @@ export function createApplication({
       submittedAt: row.submitted_at,
       revision: row.revision,
       sim: state.sim,
+      progress: attemptProgress(
+        row.kind,
+        state,
+        eventsFor(row.id),
+        row.version,
+      ),
       result: row.result ? JSON.parse(row.result) : null,
     };
     if (detailed && row.status !== "active") attempt.events = eventsFor(row.id);
@@ -580,6 +587,7 @@ export function createApplication({
               throw httpError(409, "操作識別碼已被使用。");
             send(200, {
               attempt: attemptView(row),
+              applied: !!previous.accepted && !previous.error,
               message: previous.accepted ? "操作已保存。" : "操作未執行。",
             });
             return;
@@ -620,6 +628,7 @@ export function createApplication({
             attempt: attemptView(
               db.prepare("SELECT * FROM attempts WHERE id=?").get(row.id),
             ),
+            applied: outcome.accepted && !outcome.error,
             message:
               outcome.message ||
               (outcome.accepted ? "操作已保存。" : "操作未執行。"),

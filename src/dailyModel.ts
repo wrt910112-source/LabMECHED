@@ -1,6 +1,9 @@
 import * as T from "three";
 import type { Daily } from "./DailyTraining";
-export type DailyVisual = Pick<Daily, "wiped" | "mode" | "cleanCup" | "drops" | "active">;
+export type DailyVisual = Pick<
+  Daily,
+  "wiped" | "mode" | "cleanCup" | "drops" | "active"
+>;
 export function createDailyModel(root: T.Group) {
   const targets = new Map<string, { object: T.Object3D; point: T.Vector3 }>();
   const needles: { id: string; swab: T.Mesh; stream: T.Mesh; start: number }[] =
@@ -20,7 +23,9 @@ export function createDailyModel(root: T.Group) {
           ? `${parent.toUpperCase()}-${o.name.endsWith("0") ? 1 : 2}`
           : parent === "sample"
             ? `Sample-${o.name === "sample-inner" ? 1 : 2}`
-            : "";
+            : parent === "ise"
+              ? "ISE"
+              : "";
       if (!id) return;
       const needle = o.getObjectByName("probe-needle")!;
       o.userData.dailyId = id;
@@ -97,8 +102,7 @@ export function createDailyModel(root: T.Group) {
         seen.add(n.id);
         n.start = time;
       }
-      n.swab.visible =
-        enabled && time - n.start < 1600 && n.start > 0;
+      n.swab.visible = enabled && time - n.start < 1600 && n.start > 0;
       n.swab.position.y = 1.06 + Math.sin((time - n.start) / 150) * 0.075;
       n.stream.visible = enabled && d.mode === "inspect";
       n.stream.position.y = 0.948 + Math.sin(time / 120) * 0.008;

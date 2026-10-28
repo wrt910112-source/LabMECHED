@@ -38,9 +38,13 @@ type PortalPage = "menu" | "history" | "admin";
 export default function ExamPortal({
   open,
   onClose,
+  requestedKind,
+  onSceneActive,
 }: {
   open: boolean;
   onClose: () => void;
+  requestedKind?: ExamKind;
+  onSceneActive?: (active: boolean) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [user, setUser] = useState<User | null>(null),
@@ -51,6 +55,10 @@ export default function ExamPortal({
     [page, setPage] = useState<PortalPage>("menu");
   const [attempt, setAttempt] = useState<Attempt | null>(null),
     [history, setHistory] = useState<Attempt[]>([]);
+  useEffect(() => {
+    onSceneActive?.(open && attempt?.status === "active");
+    return () => onSceneActive?.(false);
+  }, [open, attempt?.status, onSceneActive]);
   const refresh = useCallback(async () => {
     setLoading(true);
     setMessage("");
@@ -328,6 +336,7 @@ export default function ExamPortal({
                       latest = past[0];
                     return (
                       <article
+                        data-requested={kind === requestedKind}
                         className={`exam-card mission-card ${kind === "biweekly" ? "locked" : ""}`}
                         key={kind}
                       >
@@ -357,6 +366,11 @@ export default function ExamPortal({
                       </article>
                     );
                   })}
+                  <article className="exam-card mission-card locked">
+                    <h2>障礙排除</h2>
+                    <p>尚未建置完整情境</p>
+                    <button disabled>尚未開放</button>
+                  </article>
                 </div>
                 <section className="exam-card exam-achievements">
                   <h2>

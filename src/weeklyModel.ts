@@ -15,7 +15,6 @@ export function createWeeklyModel(root: T.Group) {
     const button=new T.Mesh(new T.BoxGeometry(.034,.009,.034),new T.MeshStandardMaterial({color:'#36b94e'}));
     button.position.y=.006;group.add(frame,button);group.position.set(x,.927,z);group.userData.weeklyId=`diag-${id}`;root.add(group);targets.set(`diag-${id}`,group);
   }
-  const highlighted = new Map<T.MeshStandardMaterial, T.Color>();
   const items: {
     id: string;
     o: T.Object3D;
@@ -119,10 +118,6 @@ export function createWeeklyModel(root: T.Group) {
           (object.material as T.MeshStandardMaterial).color.set(!w?.exam&&w?.wells.includes(id)?'#39a882':'#34463e');
         }
       });
-      if (!w && highlighted.size) {
-        highlighted.forEach((color, mat) => mat.emissive.copy(color));
-        highlighted.clear();
-      }
       if (w)
         root.traverse((o) => {
           if (o.userData.cupName === "U-L") {
@@ -156,22 +151,7 @@ export function createWeeklyModel(root: T.Group) {
         if (!probe)
           item.o.rotation.y =
             w?.diag === "mix" ? 0.03 * Math.sin(Date.now() / 120) : 0;
-        item.o.traverse((child) => {
-          if (!w) return;
-          if (child instanceof T.Mesh && "emissive" in child.material) {
-            const mat = child.material as T.MeshStandardMaterial;
-            if (!child.userData.weeklyMaterial) {
-              child.material = mat.clone();
-              child.userData.weeklyMaterial = true;
-            }
-            const own = child.material as T.MeshStandardMaterial;
-            if (!highlighted.has(own))
-              highlighted.set(own, own.emissive.clone());
-            (child.material as T.MeshStandardMaterial).emissive.set(
-              !w.exam && w.target === item.id ? "#294e38" : "#000000",
-            );
-          }
-        });
+
       }
     },
   };

@@ -1,3 +1,4 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
 
 test("v4 covers sweep to ninety degrees without crossing each other, arch or module cover", async ({
@@ -81,31 +82,31 @@ test("v4 exploration preserves covers, rear cameras reveal DET and motor removal
   page,
 }, info) => {
   await page.goto("/");
-  await page.getByTestId("part-ise").click();
-  await page.getByTestId("door-ise-top").click();
-  await page.getByTestId("door-ise-top-rear").click();
+  await selectPart(page,"ise");
+  await page.getByTestId("context-ise-top").click();
+  await page.getByTestId("context-ise-top-rear").click();
   await page
     .getByRole("button", { name: "打開 ISE 維護蓋", exact: true })
     .click();
-  await page.getByTestId("part-ise-motor").click();
+  await selectPart(page,"ise-motor");
   await expect(
     page.getByRole("button", { name: "拆下選定部件", exact: true }),
   ).toBeDisabled();
   for (const id of ["ise-plug-a", "ise-plug-b"]) {
-    await page.getByTestId(`part-${id}`).click();
+    await selectPart(page,id);
     await page
       .getByRole("button", { name: "拆下選定部件", exact: true })
       .click();
   }
-  await page.getByTestId("part-ise-motor").click();
+  await selectPart(page,"ise-motor");
   await page.getByRole("button", { name: "拆下選定部件", exact: true }).click();
-  await page.getByTestId("part-ise-plug-a").click();
+  await selectPart(page,"ise-plug-a");
   await expect(
     page.getByRole("button", { name: "裝回選定部件", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "全部裝回", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("已拆下 0／5");
-  await page.getByTestId("part-ise-internal").click();
+  await selectPart(page,"ise-internal");
   await expect(
     page.getByRole("button", { name: "關閉 ISE 維護蓋", exact: true }),
   ).toBeVisible();
@@ -123,7 +124,7 @@ test("v4 exploration preserves covers, rear cameras reveal DET and motor removal
   await page
     .getByRole("button", { name: "Sample probe 後方", exact: true })
     .click();
-  await page.getByTestId("part-rear-syringes").click();
+  await selectPart(page,"rear-syringes");
   await page
     .getByRole("button", { name: "開關 syringe 櫃門", exact: true })
     .click();

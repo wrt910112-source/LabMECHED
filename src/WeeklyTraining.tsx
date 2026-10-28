@@ -128,7 +128,7 @@ export function useWeeklyTraining(
     setDiag("");
   }
   function bottle(id: string, action: BottleAction) {
-    if ((slotById[id].module === "ise" ? !iseMaintenance || !iseTop : !maintenance || !lid) || busy) {
+    if ((slotById[id].module === "ise" ? !iseTop : !maintenance || !lid) || busy) {
       setMessage("請進入保養模式並開蓋，運轉中不能更換瓶子。");
       return;
     }
@@ -259,8 +259,9 @@ export function useWeeklyTraining(
 }
 export type Weekly = ReturnType<typeof useWeeklyTraining>;
 export function weeklyCompletion(w:Weekly){return [w.ready,w.probesDone,weeklyRods.every(id=>w.progress[id]===3),w.wellsDone,w.rodsDone,w.phase!=='idle'||w.w2Ready&&w.cup,w.phase==='done',w.reviewed,w.complete];}
+export const weeklyStepNames =['準備與櫃內四支 syringe 水氣檢查','Sample／ISE 三支探針拆洗、裝回及排水檢查','左右两組 mixer bar 取下清潔並裝回','棉棒沾 Cleaning Solution，逐孔清潔 18 個孔','Replace Mix Bar 與 DIAG 運轉檢查','準備七瓶 W2 與 ISE CLEAN 杯','Analyzer Maintenance → W2','Analyzer Maintenance → Photocal Monitor','Diluent 清潔、瓶槽復原與結束保養'];
 export function WeeklyOverview({w,go,onModel}:{w:Weekly;go:(p:string)=>void;onModel:(id:string)=>void}){
- const names=['準備與櫃內四支 syringe 水氣檢查','Sample／ISE 三支探針拆洗、裝回及排水檢查','左右两組 mixer bar 取下清潔並裝回','棉棒沾 Cleaning Solution，逐孔清潔 18 個孔','Replace Mix Bar 與 DIAG 運轉檢查','準備七瓶 W2 與 ISE CLEAN 杯','Analyzer Maintenance → W2','Analyzer Maintenance → Photocal Monitor','Diluent 清潔、瓶槽復原與結束保養'];
+ const names=weeklyStepNames;
  const done=weeklyCompletion(w),first=done.findIndex(v=>!v);
  return <section className="daily-page"><h2>周保養練習</h2><p>清單記錄進度；實體清潔請到模型操作。W2 與 Photocal Monitor 由 Analyzer Maintenance 進入。</p><button disabled={w.busy} onClick={w.reset}>重設並開始新一輪周保養</button><button onClick={()=>onModel(w.target)}>到模型操作</button><ol className="daily-steps">{names.map((s,i)=><li key={s}><span>{done[i]?'✓ 已完成':first===i?'目前步驟':'待完成'}</span><button onClick={()=>{if([4,6,7].includes(i)){go('Analyzer Maintenance');return;}w.setView(['準備','探針','攪拌棒','孔洞清潔','','W2 準備','','','復原'][i]);onModel(i===0?'syringes':i===1?'Sample-1':i===2||i===3?'group-R1S':i===5?'ise-wash-1':w.target);}}>{i+1}. {s}</button></li>)}</ol></section>;
 }

@@ -9,3 +9,8 @@ data/
 *.sqlite-wal
 .env
 .env.*
+
+artifacts/hud/
+
+artifacts/workstation-v5/
+artifacts/real-photos/

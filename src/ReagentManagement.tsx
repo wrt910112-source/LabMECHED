@@ -16,15 +16,40 @@ export default function ReagentManagement({
   d: Daily;
   notify: (s: string) => void;
 }) {
+  return (
+    <ReagentSurface
+      rows={d.active ? d.reagents : undefined}
+      checked={d.reagentChecked}
+      notify={notify}
+      onReplace={d.replaceReagent}
+      onCheck={() => {
+        const result = d.checkReagents();
+        notify(result);
+        return !result.startsWith("請先");
+      }}
+    />
+  );
+}
+function ReagentSurface({
+  rows,
+  disabled = false,
+  onReplace,
+  onCheck,
+  checked = false,
+  notify,
+}: {
+  rows?: ReagentBottle[];
+  disabled?: boolean;
+  onReplace: (id: string) => void;
+  onCheck: () => boolean | void | Promise<boolean | void>;
+  checked?: boolean;
+  notify: (s: string) => void;
+}) {
   const [section, setSection] = useState("Reagent Management"),
     [tab, setTab] = useState("Main"),
     [check, setCheck] = useState(false),
     [content, setContent] = useState("(All)"),
     [hours, setHours] = useState(7);
-  function change(i: number, patch: Partial<Daily["reagents"][number]>) {
-    d.setReagents((v) => v.map((r, j) => (i === j ? { ...r, ...patch } : r)));
-    d.setReagentChecked(false);
-  }
   const footer =
     tab === "Details"
       ? [
@@ -175,12 +200,37 @@ export default function ReagentManagement({
                   </tr>
                 </thead>
                 <tbody>
-                  {detailRows
+                  {[
+                    ...detailRows,
+                    ...(rows || [])
+                      .filter((r) => !detailRows.some((row) => row[0] === r.id))
+                      .map((r) => [
+                        r.id!,
+                        r.test!,
+                        "—",
+                        "—",
+                        "—",
+                        "—",
+                        "—",
+                        "—",
+                        "—",
+                        "—",
+                      ]),
+                  ]
                     .filter((r) => content === "(All)" || r[1] === "9.CRE")
                     .map((r) => {
+                      const bottle = rows?.find((v) => v.id === r[0]);
                       const cre = r[1] === "9.CRE",
-                        rb = cre ? hours : r[4],
-                        cal = cre ? hours : r[5];
+                        rb = cre
+                          ? hours
+                          : typeof r[4] === "number"
+                            ? r[4]
+                            : null,
+                        cal = cre
+                          ? hours
+                          : typeof r[5] === "number"
+                            ? r[5]
+                            : null;
                       return (
                         <tr key={r[0]} data-testid={`reagent-${r[0]}`}>
                           <td>{r[0]}</td>
@@ -188,36 +238,83 @@ export default function ReagentManagement({
                           <td>
                             {r[0].startsWith("R1") ? "R1(R1-1)" : "R2(R2-1)"}
                           </td>
-                          <td className="shot-cell">{r[2]}</td>
-                          <td>{r[3]}D</td>
+                          <td className="shot-cell">
+                            {bottle ? bottle.remaining : r[2]}
+                          </td>
+                          <td>{r[3] === "—" ? "—" : `${r[3]}D`}</td>
                           <td
                             data-testid="rb-stability"
                             className={
-                              stabilityWarning(rb) ? "stability-warning" : ""
+                              bottle?.rb === "expired"
+                                ? "stability-expired"
+                                : stabilityWarning(rb)
+                                  ? "stability-warning"
+                                  : ""
                             }
                           >
-                            {remainingText(rb)}
+                            {bottle
+                              ? bottle.rb === "expired"
+                                ? "expired"
+                                : bottle.rb === "unchecked"
+                                  ? "未檢查"
+                                  : "有效"
+                              : remainingText(rb)}
                           </td>
                           <td
                             data-testid="cal-stability"
                             className={
-                              stabilityWarning(cal) ? "stability-warning" : ""
+                              bottle?.cal === "expired"
+                                ? "stability-expired"
+                                : stabilityWarning(cal)
+                                  ? "stability-warning"
+                                  : ""
                             }
                           >
-                            {remainingText(cal)}
+                            {bottle
+                              ? bottle.cal === "na"
+                                ? "—"
+                                : bottle.cal === "expired"
+                                  ? "expired"
+                                  : bottle.cal === "unchecked"
+                                    ? "未檢查"
+                                    : "有效"
+                              : remainingText(cal)}
                           </td>
-                          <td>{r[6]}</td>
+                          <td>
+                            {bottle?.reason === "即將到期" && !bottle.replaced
+                              ? "即將到期"
+                              : r[6]}
+                          </td>
                           <td>{r[7]}</td>
                           <td>{r[8]}</td>
                           <td>{r[9]}</td>
-                          <td>{cre ? "Creatinine · 24h 校正情境" : ""}</td>
+                          <td>
+                            {bottle ? (
+                              <>
+                                <span>
+                                  {bottle.replaced ? "已更換" : bottle.reason}
+                                </span>{" "}
+                                <button
+                                  aria-label={`更換試劑 ${bottle.name} ${bottle.side}`}
+                                  disabled={disabled || bottle.replaced}
+                                  onClick={() => onReplace(bottle.id!)}
+                                >
+                                  更換
+                                </button>
+                              </>
+                            ) : cre ? (
+                              "Creatinine · 24h 校正情境"
+                            ) : (
+                              ""
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
                 </tbody>
               </table>
             </div>
-            <div className="reagent-note">
+            <div className="reagent-note" hidden={!!rows}>
               <button
                 onClick={() =>
                   notify(
@@ -250,102 +347,18 @@ export default function ReagentManagement({
           </>
         )}
         <small>
-          照片版面與示例資料；CRE 預設 7H 用於提示示範。Entry
-          僅登記申請，不重設穩定時間。
+          {rows
+            ? "訓練試劑情境；逐瓶更換後執行 Reagent Check。"
+            : "照片版面與示例資料；CRE 預設 7H 用於提示示範。"}
+          Entry 僅登記申請，不重設穩定時間。
         </small>
-        {tab === "Details" && d.active && (
-          <details open className="reagent-training">
-            <summary>日保養試劑更換紀錄（練習情境）</summary>
-            <table className="daily-table">
-              <thead>
-                <tr>
-                  {[
-                    "Test",
-                    "R1/R2",
-                    "Shots／需求",
-                    "狀態",
-                    "紀錄",
-                    "更換",
-                    "用量已檢查",
-                  ].map((n) => (
-                    <th key={n}>{n}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {d.reagents.map((r, i) => (
-                  <tr key={i}>
-                    <th>{r.name}</th>
-                    <td>{r.side}</td>
-                    <td>
-                      {r.remaining}／{r.need}
-                    </td>
-                    <td>{r.replaced ? "已更換" : r.reason}</td>
-                    <td>
-                      <input
-                        aria-label={`${r.name} ${r.side} 紀錄`}
-                        value={r.note}
-                        onChange={(e) => change(i, { note: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        disabled={r.replaced}
-                        onClick={() =>
-                          change(i, {
-                            replaced: true,
-                            remaining: 500,
-                            reviewed: false,
-                          })
-                        }
-                      >
-                        更換 {r.name} {r.side}
-                      </button>
-                    </td>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`${r.name} ${r.side} 用量已檢查`}
-                        checked={r.reviewed}
-                        onChange={(e) =>
-                          change(i, { reviewed: e.target.checked })
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-        )}
         {check && (
           <fieldset>
             <legend>Reagent Check</legend>
             <button
-              onClick={() => {
-                if (!d.temp.saved || !d.index) {
-                  notify(
-                    "Reagent Check 前請先完成溫度登記及 New Index，兩者順序不限。",
-                  );
-                  return;
-                }
-                if (!d.suppliesReady) {
-                  notify(
-                    "Reagent Check 前請逐瓶補滿十二瓶 CLN-1、Diluent、DET-1、DET-2。",
-                  );
-                  return;
-                }
-                if (!d.active || !d.reagentReady) {
-                  notify(
-                    "請逐項記錄並確認用量，且更換用完、量不足或即將到期的試劑；R1／R2 分別檢查。",
-                  );
-                  return;
-                }
-                d.setReagentChecked(true);
-                setCheck(false);
-                notify(
-                  "All positions 教學檢查完成。下一步進入 Rack Requisition 設定 Calibration 與 QC。",
-                );
+              disabled={disabled || !rows}
+              onClick={async () => {
+                if ((await onCheck()) !== false) setCheck(false);
               }}
             >
               All positions
@@ -353,7 +366,7 @@ export default function ReagentManagement({
             <button onClick={() => setCheck(false)}>取消</button>
           </fieldset>
         )}
-        {d.reagentChecked && <p>✓ All positions 已完成</p>}
+        {checked && <p>✓ All positions 已完成</p>}
       </section>
       <nav className="ws-footer">
         {footer.map((n) => (
@@ -378,136 +391,30 @@ export function ExamReagentManagement({
   disabled,
   onReplace,
   onCheck,
+  checked = false,
 }: {
   rows: ReagentBottle[];
   disabled: boolean;
   onReplace: (id: string) => void;
   onCheck: () => void;
+  checked?: boolean;
 }) {
-  const [tab, setTab] = useState("Details");
+  const [message, setMessage] = useState("");
   return (
     <>
-      <nav className="ws-primary-tabs">
-        <button aria-pressed>Reagent Management</button>
-        <button disabled>Reagent Inventory</button>
-        <button disabled>Reagent Consumption</button>
-      </nav>
-      <nav className="ws-tabs">
-        {["Main", "Details", "ISE"].map((t) => (
-          <button
-            key={t}
-            disabled={t === "ISE"}
-            aria-pressed={tab === t}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
-      </nav>
-      <section className="reagent-page">
-        {tab === "Main" ? (
-          <div className="reagent-main-grid">
-            {[...new Set(rows.map((r) => r.test!))].map((test) => (
-              <button
-                key={test}
-                className={
-                  rows.some((r) => r.test === test && !r.replaced)
-                    ? "short"
-                    : ""
-                }
-                onClick={() => setTab("Details")}
-              >
-                <span>{test}</span>
-                <div>
-                  {rows
-                    .filter((r) => r.test === test)
-                    .map((r) => `${r.side}: ${r.remaining}`)
-                    .join(" / ")}
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="reagent-detail-scroll">
-            <table className="reagent-detail" aria-label="考試試劑明細">
-              <thead>
-                <tr>
-                  {[
-                    "Pos.",
-                    "Test Name",
-                    "R1/R2",
-                    "Shots",
-                    "Onboard Remaining",
-                    "RB Stability Remaining",
-                    "Cal Stability Remaining",
-                    "Expiration",
-                    "Lot No.",
-                    "Bottle No. (SN)",
-                    "Seq.",
-                    "Comment",
-                  ].map((h) => (
-                    <th key={h}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.id}</td>
-                    <td>{r.test}</td>
-                    <td>{r.side}</td>
-                    <td>{r.remaining}</td>
-                    <td>—</td>
-                    <td
-                      className={r.rb === "expired" ? "stability-expired" : ""}
-                    >
-                      {r.rb === "expired"
-                        ? "expired"
-                        : r.rb === "unchecked"
-                          ? "未檢查"
-                          : "有效"}
-                    </td>
-                    <td
-                      className={r.cal === "expired" ? "stability-expired" : ""}
-                    >
-                      {r.cal === "na"
-                        ? "—"
-                        : r.cal === "expired"
-                          ? "expired"
-                          : r.cal === "unchecked"
-                            ? "未檢查"
-                            : "有效"}
-                    </td>
-                    <td>
-                      {!r.replaced && r.reason === "即將到期"
-                        ? "即將到期"
-                        : "—"}
-                    </td>
-                    <td>—</td>
-                    <td>—</td>
-                    <td>1</td>
-                    <td>
-                      <span>{r.replaced ? "已更換" : r.reason}</span>{" "}
-                      <button
-                        disabled={disabled}
-                        aria-label={`更換試劑 ${r.name} ${r.side}`}
-                        onClick={() => onReplace(r.id!)}
-                      >
-                        更換試劑
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      <nav className="ws-footer">
-        <button disabled={disabled} onClick={onCheck}>
-          Reagent Check · All positions
-        </button>
-      </nav>
+      <ReagentSurface
+        rows={rows}
+        disabled={disabled}
+        onReplace={onReplace}
+        onCheck={onCheck}
+        checked={checked}
+        notify={setMessage}
+      />
+      {message && (
+        <div className="ws-message" role="status">
+          {message}
+        </div>
+      )}
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
 test("cabinet syringes, probe counts, clearance and inspection records", async ({
   page,
@@ -65,16 +66,16 @@ test("cabinet syringes, probe counts, clearance and inspection records", async (
   ]);
   expect(result.clearance).toBeGreaterThan(0.01);
   expect(result.doorHidden).toBe(false);
-  await page.getByTestId("part-syringes").click();
-  await expect(page.getByRole("switch")).not.toBeChecked();
-  await page.getByTestId("front-syringe-toggle").click();
+  await selectPart(page,"syringes");
+  await expect(page.locator(".viewer-host")).toHaveAttribute("data-internal","false");
+  await page.getByTestId("context-syringe-front").click();
   for (const name of ["R2-2", "R2-1", "R1-1", "R1-2"])
     await page.getByLabel(`${name} 水氣檢查`).selectOption("dry");
   await expect(page.getByRole("status")).toContainText("已檢查 4／4");
   await page.getByLabel("R1-2 水氣檢查").selectOption("moisture");
   await expect(page.getByRole("status")).toContainText("發現水氣");
-  await page.getByTestId("part-r1").click();
-  await page.getByTestId("part-syringes").click();
+  await selectPart(page,"r1");
+  await selectPart(page,"syringes");
   await expect(page.getByLabel("R1-2 水氣檢查")).toHaveValue("moisture");
   await page.waitForTimeout(1000);
   await page.screenshot({

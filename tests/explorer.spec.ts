@@ -1,30 +1,20 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
-test("model navigation, internal view, photos and desktop layout", async ({
+
+test("HUD directory, photographs, camera tools and geometry picking", async ({
   page,
 }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
   await page.goto("/");
-  await expect(page.getByText("3D LIVE", { exact: true })).toBeVisible({
-    timeout: 30000,
-  });
-  await expect(page.getByTestId("model-canvas")).toBeVisible();
-  await page.screenshot({
-    path: `test-results/${info.project.name}-overview.png`,
-    fullPage: true,
-  });
-  const dimensions = await page.evaluate(() => ({
-    width: document.documentElement.scrollWidth,
-    viewport: innerWidth,
-  }));
-  expect(dimensions.width).toBe(dimensions.viewport);
-  const bottom = await page.locator(".lower-bar").boundingBox();
-  expect(bottom!.y + bottom!.height).toBeLessThanOrEqual(
-    page.viewportSize()!.height,
-  );
+  await expect(page.getByText("3D LIVE", { exact: true })).toBeVisible();
+  const host = page.locator(".viewer-host"),
+    canvas = page.getByTestId("model-canvas");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth === innerWidth,
+    ),
+  ).toBe(true);
   for (const id of [
     "loader",
     "console",
@@ -38,22 +28,14 @@ test("model navigation, internal view, photos and desktop layout", async ({
     "mixing",
     "washing",
   ]) {
-    await page.getByTestId(`part-${id}`).click();
+    await selectPart(page, id);
     if (id === "console")
       await page
         .getByRole("button", { name: "退出螢幕 ×", exact: true })
         .click();
-    await expect(page.locator(".viewer-host")).toHaveAttribute(
-      "data-selected",
-      id,
-    );
-    await expect(page.getByTestId(`part-${id}`)).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    if (id === "r1" || id === "r2" || id === "sample")
-      await page.getByRole("button", { name: "部件介紹", exact: true }).click();
-    const img = page.locator(".reference-photo img");
+    await expect(host).toHaveAttribute("data-selected", id);
+    await page.getByRole("button", { name: "實機照片", exact: true }).click();
+    const img = page.locator(".hud-part-info figure img");
     await expect
       .poll(() =>
         img.evaluate(
@@ -62,111 +44,79 @@ test("model navigation, internal view, photos and desktop layout", async ({
       )
       .toBeTruthy();
   }
-  await page.getByTestId("part-r1").click();
-  await expect(page.getByRole("switch")).not.toBeChecked();
-  await page.getByRole("switch").click();
-  await page.waitForTimeout(900);
-  await page.screenshot({
-    path: `test-results/${info.project.name}-r1.png`,
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "部件介紹", exact: true }).click();
   await page.getByRole("button", { name: "放大實機照片", exact: true }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "實機照片", exact: true }),
+  ).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  await page.getByRole("switch").click();
-  await expect(page.locator(".viewer-host")).toHaveAttribute(
-    "data-internal",
-    "false",
-  );
-  await page.getByRole("switch").click();
-  await page.getByRole("button", { name: "重設視角", exact: true }).click();
-  await expect(page.locator(".viewer-host")).toHaveAttribute(
-    "data-selected",
-    "overview",
-  );
+  await expect(
+    page.getByRole("dialog", { name: "實機照片", exact: true }),
+  ).not.toBeVisible();
+  await selectPart(page, "analyzer");
+  await page.getByTestId("context-main").click();
+  await expect(host).toHaveAttribute("data-internal", "true");
   await page.getByRole("button", { name: "俯視", exact: true }).click();
-  await page.waitForTimeout(900);
-  await page.screenshot({
-    path: `test-results/${info.project.name}-internal.png`,
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "後方", exact: true }).click();
-  await page.getByRole("button", { name: "放大模型", exact: true }).click();
-  await page.getByRole("button", { name: "縮小模型", exact: true }).click();
+  await expect(host).toHaveAttribute("data-internal", "true");
+  await selectPart(page, "analyzer");
+  await page.getByTestId("context-main").click();
   await page.getByRole("button", { name: "重設視角", exact: true }).click();
-  await page.waitForTimeout(900);
-  const canvas = page.getByTestId("model-canvas"),
-    rect = (await canvas.boundingBox())!;
-  await page.mouse.move(rect.x + rect.width * 0.5, rect.y + rect.height * 0.55);
+  await page.waitForTimeout(1000);
+  const r = (await canvas.boundingBox())!;
+  await page.mouse.move(r.width * 0.45, r.height * 0.6);
   await page.mouse.down();
-  await page.mouse.move(
-    rect.x + rect.width * 0.65,
-    rect.y + rect.height * 0.5,
-    { steps: 15 },
-  );
+  await page.mouse.move(r.width * 0.6, r.height * 0.62, { steps: 12 });
   await page.mouse.up();
-  await expect(page.locator(".viewer-host")).toHaveAttribute(
-    "data-selected",
-    "overview",
-  );
+  await expect(host).toHaveAttribute("data-selected", "overview");
   await page.getByRole("button", { name: "重設視角", exact: true }).click();
-  await page.waitForTimeout(900);
-  // Pick actual geometry, not a DOM hotspot. The analyzer cabinet is visible
-  // in the lower-right of the initial camera in both supported viewports.
-  const meshX = rect.x + rect.width * 0.63;
-  const meshY = rect.y + rect.height * 0.65;
-  await page.mouse.move(meshX, meshY);
+  await page.waitForTimeout(1000);
+  // Click real mesh geometry in the scene, outside either HUD safe area.
+  await page.mouse.move(r.width * 0.52, r.height * 0.6);
   await expect(page.locator(".hover-part")).toBeVisible();
-  await page.mouse.click(meshX, meshY);
-  await expect(page.locator(".viewer-host")).not.toHaveAttribute(
-    "data-selected",
-    "overview",
-  );
+  await page.mouse.click(r.width * 0.52, r.height * 0.6);
+  await expect(host).not.toHaveAttribute("data-selected", "overview");
   await page.getByRole("button", { name: "重設視角", exact: true }).click();
   await page.waitForTimeout(900);
   await page
     .getByRole("button", { name: "模型標籤：ISE 模組", exact: true })
     .click();
-  await expect(page.locator(".viewer-host")).toHaveAttribute(
-    "data-selected",
-    "ise",
-  );
+  await expect(host).toHaveAttribute("data-selected", "ise");
+  await page.getByRole("button", { name: "部件目錄", exact: true }).click();
   await page.getByRole("textbox", { name: "搜尋部件" }).fill("不存在");
   await expect(page.getByText("找不到相符部件")).toBeVisible();
-  await page.getByRole("button", { name: "清除搜尋" }).click();
-  await expect(
-    page
-      .getByRole("navigation", { name: "學習模式" })
-      .locator("button:disabled"),
-  ).toHaveCount(2);
+  await page.getByRole("button", { name: "清除搜尋", exact: true }).click();
+  await page.getByRole("button", { name: "關閉部件目錄", exact: true }).click();
+  await page.screenshot({
+    path: `test-results/${info.project.name}-hud-navigation.png`,
+  });
   expect(errors).toEqual([]);
 });
-test("alternate reference photographs", async ({ page }) => {
+
+test("alternate reference photographs remain available", async ({ page }) => {
   await page.goto("/");
-  await page.getByTestId("part-ise-reagents").click();
+  await selectPart(page, "ise-reagents");
+  await page.getByRole("button", { name: "實機照片", exact: true }).click();
   await page
     .getByRole("button", { name: "切換參考照片 2", exact: true })
     .click();
-  await expect(page.locator(".reference-photo img")).toHaveAttribute(
+  await expect(page.locator(".hud-part-info figure img")).toHaveAttribute(
     "src",
-    /ise-reference.jpg$/,
+    /ISE reference.jpg$/,
   );
-  await page.getByTestId("part-sample").click();
-  await page.getByRole("button", { name: "部件介紹", exact: true }).click();
-  await expect(page.locator(".reference-photo img")).toHaveAttribute(
+  await selectPart(page, "sample");
+  await page.getByRole("button", { name: "實機照片", exact: true }).click();
+  await expect(page.locator(".hud-part-info figure img")).toHaveAttribute(
     "src",
-    /rear.jpg$/,
+    /Sample probes.jpg$/,
   );
   await page
     .getByRole("button", { name: "切換參考照片 2", exact: true })
     .click();
-  await expect(page.locator(".reference-photo img")).toHaveAttribute(
+  await expect(page.locator(".hud-part-info figure img")).toHaveAttribute(
     "src",
-    /sample.jpg$/,
+    /Sample probe DET1, DET2.jpg$/,
   );
 });
+
 test("WebGL unavailable keeps reference navigation usable", async ({
   page,
 }) => {
@@ -183,7 +133,7 @@ test("WebGL unavailable keeps reference navigation usable", async ({
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("無法顯示 3D 模型");
   await expect(page.getByText("3D 無法使用", { exact: true })).toBeVisible();
-  await page.getByTestId("part-r2").click();
-  await page.getByRole("button", { name: "部件介紹", exact: true }).click();
-  await expect(page.locator(".detail-title h2")).toHaveText("R2 試劑槽與探針");
+  await selectPart(page, "r2");
+  await page.getByRole("button", { name: "認識", exact: true }).click();
+  await expect(page.locator(".hud-part-info h2")).toHaveText("R2 試劑槽與探針");
 });

@@ -1,3 +1,5 @@
+import { instrument, closeProgram, cups, iseDrain, replaceAll } from "./ui";
+import { startDaily } from "./ui";
 import { prepareDailyTasks } from "./daily-fixture";
 import { test, expect } from "@playwright/test";
 
@@ -7,36 +9,21 @@ for (const order of ["ACBD", "CADB", "CDAB"]) {
   }) => {
     test.setTimeout(120000);
     await page.goto("/");
-    await page
-      .getByRole("button", { name: "01 日保養 開始練習", exact: true })
-      .click();
+    await startDaily(page);
     const ws = page.locator(".workstation");
     const b = (name: string) => ws.getByRole("button", { name, exact: true });
     const home = async (name: string) => {
+      await closeProgram(ws);
       await b("Home 主選單").click();
       await b(name).click();
     };
-    await b("開始日保養").click();
+
     await home("Rack Requisition");
     await expect(b("Start Entry")).toBeDisabled();
     await prepareDailyTasks(page, ws);
     await home("Reagent Management");
     await b("Details").click();
-    for (const [i, [name, side]] of [
-      ["ALT", "R1"],
-      ["ALT", "R2"],
-      ["AST", "R1"],
-      ["AST", "R2"],
-      ["GLU", "R1"],
-    ].entries()) {
-      if (i < 3) await b(`更換 ${name} ${side}`).click();
-      await ws
-        .getByLabel(`${name} ${side} 紀錄`, { exact: true })
-        .fill("已確認至下次保養");
-      await ws
-        .getByLabel(`${name} ${side} 用量已檢查`, { exact: true })
-        .check();
-    }
+    await replaceAll(ws);
     await b("Reagent Check").click();
     await b("All positions").click();
     await home("Analyzer Status");
@@ -50,12 +37,13 @@ for (const order of ["ACBD", "CADB", "CDAB"]) {
     await b("Details").click();
     await b("Reagent Check").click();
     await b("All positions").click();
-    await ws.getByLabel("主蓋開啟", { exact: true }).check();
-    await ws.getByLabel("ISE 上蓋開啟", { exact: true }).check();
+    await instrument(ws, "主蓋開啟", true);
+    await instrument(ws, "ISE 上蓋開啟", true);
+    await iseDrain(ws);
     for (const step of order) {
       if (step === "A" || step === "B") {
         await home("Analyzer Maintenance");
-        await ws.getByLabel("Analyzer Maintenance", { exact: true }).check();
+        await instrument(ws, "Analyzer Maintenance", true);
         await b(
           step === "A" ? "Cleaning Probe" : "Inspect Probe & Mixing Bar",
         ).click();
@@ -80,11 +68,13 @@ for (const order of ["ACBD", "CADB", "CDAB"]) {
         await home("Analyzer Maintenance");
         await b("ISE Maintenance").click();
         if (step === "C") {
-          await ws.getByLabel("ISE Maintenance", { exact: true }).uncheck();
-          await b("在 CLEAN 放置裝滿的 Cleaning Solution").click();
+          await instrument(ws, "ISE Maintenance", false);
+          await cups(ws, async () => {
+            await b("在 CLEAN 放置裝滿的 Cleaning Solution").click();
+          });
           await b("Cleaning").click();
         } else {
-          await ws.getByLabel("ISE Maintenance", { exact: true }).check();
+          await instrument(ws, "ISE Maintenance", true);
           for (let i = 0; i < 3; i++) await b("Total Prime").click();
         }
       }
@@ -93,8 +83,9 @@ for (const order of ["ACBD", "CADB", "CDAB"]) {
     await expect(b("Start Entry")).toBeDisabled();
     await home("Analyzer Maintenance");
     await b("ISE Maintenance").click();
-    await ws.getByLabel("ISE Maintenance", { exact: true }).uncheck();
+    await instrument(ws, "ISE Maintenance", false);
     await b("Calibration").click();
+    await b("試劑杯準備").click();
     await b("取出並丟棄 CLEAN 杯").click();
     for (const cup of [
       "S-H · Serum High",
@@ -103,6 +94,7 @@ for (const order of ["ACBD", "CADB", "CDAB"]) {
       "U-L · Urine Low",
     ])
       await ws.getByLabel(`${cup} 滴數`).fill("10");
+    await closeProgram(ws);
     await b("Serum/Urine Start").click();
     await home("Rack Requisition");
     await expect(b("Start Entry")).toBeDisabled();
@@ -110,6 +102,7 @@ for (const order of ["ACBD", "CADB", "CDAB"]) {
     await b("ISE Maintenance").click();
     await b("Calibration").click();
     await ws.getByLabel("已檢查 Serum／Urine 數值").check();
+    await closeProgram(ws);
     await home("Rack Requisition");
     await expect(b("Start Entry")).toBeEnabled();
     await b("Calibration").click();

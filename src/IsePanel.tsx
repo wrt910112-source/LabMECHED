@@ -39,6 +39,7 @@ export default function IsePanel({
     (!!removed &&
       (component === "ise-plug-a" || component === "ise-plug-b") &&
       state.removed.includes("ise-motor"));
+  const blockedReason = !state.open ? "請先開啟 ISE module 鐵蓋" : restoring ? "正在裝回部件" : !removed&&component==="ise-motor"&&!plugsOut ? "請先拔除兩個插頭" : removed&&(component==="ise-plug-a"||component==="ise-plug-b")&&state.removed.includes("ise-motor") ? "請先裝回馬達主體" : "";
   return (
     <section className="bottle-controls" aria-label="ISE 部件操作">
       <h3>ISE 構造探索</h3>
@@ -56,7 +57,7 @@ export default function IsePanel({
       {component && (
         <div className="bottle-actions">
           <button
-            disabled={blocked}
+            disabled={blocked} title={blockedReason}
             onClick={() =>
               onChange({
                 ...state,

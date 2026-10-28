@@ -1,3 +1,4 @@
+import { selectPart, startDaily } from "./ui";
 import { test, expect } from "@playwright/test";
 
 test("lower shelf keeps Standard/Buffer caps clear and rear cabinet contains two syringes", async ({
@@ -70,8 +71,13 @@ test("rear right panel stays closed and the upper ISE cavity has a solid boundar
     );
     const jugs = bottles.map((b) => bounds(b));
     // Rays through the module opening must meet the floor before any jug.
+    const floorBounds = bounds(floor);
     const rays = [-0.13, 0, 0.1].flatMap((x) =>
-      [-0.2, 0.1, 0.4].map((z) => {
+      [
+        floorBounds.min.z + 0.08,
+        (floorBounds.min.z + floorBounds.max.z) / 2,
+        floorBounds.max.z - 0.025,
+      ].map((z) => {
         const hits = new T.Raycaster(
           new T.Vector3(x, 0.9, z),
           new T.Vector3(0, -1, 0),
@@ -102,37 +108,32 @@ test("reference camera framing and front syringe switch preserve independent cov
 }, info) => {
   await page.goto("/");
   const viewer = page.locator(".viewer-host");
-  const toggle = page.getByTestId("front-syringe-toggle");
-  const rearToggle = page.getByTestId("rear-syringe-toggle");
-  await expect(rearToggle).toBeVisible();
-  const frontRect = await toggle.boundingBox(),
-    rearRect = await rearToggle.boundingBox();
-  expect(Math.abs(frontRect!.y - rearRect!.y)).toBeLessThan(2);
-  await rearToggle.click();
+  await selectPart(page, "rear-syringes");
+  await page.getByTestId("context-syringe-rear").click();
   await expect(viewer).toHaveAttribute("data-syringe-rear", "true");
   await expect(viewer).toHaveAttribute("data-syringe-front", "false");
-  await rearToggle.click();
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveText("開啟前方 syringe 櫃門");
+  await page.getByTestId("context-syringe-rear").click();
+  await selectPart(page, "syringes");
+  const toggle = page.getByTestId("context-syringe-front");
   await toggle.click();
   await expect(viewer).toHaveAttribute("data-syringe-front", "true");
   await expect(viewer).toHaveAttribute("data-internal", "false");
-  await page.getByTestId("part-syringes").click();
+  await selectPart(page, "syringes");
   await page.waitForTimeout(900);
   await page.screenshot({
     path: `test-results/${info.project.name}-front-syringe-switch.png`,
   });
   await toggle.click();
   await expect(viewer).toHaveAttribute("data-syringe-front", "false");
-  await page.getByTestId("part-ise").click();
-  await page.getByTestId("part-ise-reagents").click();
+  await selectPart(page, "ise");
+  await selectPart(page, "ise-reagents");
   await page.waitForTimeout(900);
   await page.screenshot({
     path: `test-results/${info.project.name}-reagent-hood-closed.png`,
   });
-  await page.getByTestId("part-ise").click();
+  await selectPart(page, "ise");
   for (const id of ["ise-top", "ise-top-rear", "ise-middle", "ise-bottom"])
-    await page.getByTestId(`door-${id}`).click();
+    await page.getByTestId(`context-${id}`).click();
   await page
     .getByRole("button", { name: "打開 ISE 維護蓋", exact: true })
     .click();
@@ -142,7 +143,7 @@ test("reference camera framing and front syringe switch preserve independent cov
     ["ise-reagents", "lowered-standard-buffer"],
     ["rear-syringes", "two-rear-syringes"],
   ]) {
-    await page.getByTestId(`part-${id}`).click();
+    await selectPart(page, id);
     if (id === "rear-syringes")
       await page
         .getByRole("button", { name: "開關 syringe 櫃門", exact: true })
@@ -157,13 +158,15 @@ test("reference camera framing and front syringe switch preserve independent cov
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page
-    .getByRole("button", { name: "01 日保養 開始練習", exact: true })
-    .click();
+  await startDaily(page);
   const ws = page.locator(".workstation");
-  await ws.getByRole("button", { name: "開始日保養", exact: true }).click();
+
+  await ws.getByRole("button", { name: "Home 主選單", exact: true }).click();
+  await ws.getByRole("button", { name: "日保養", exact: true }).click();
+  await ws.locator(".ws-instrument-hud summary").click();
   await ws.getByTestId("practice-front-syringe-toggle").click();
   await ws.getByTestId("practice-rear-syringe-toggle").click();
+  await ws.locator(".ws-instrument-hud summary").click();
   await ws.getByRole("button", { name: "退出螢幕 ×", exact: true }).click();
   await expect(viewer).toHaveAttribute("data-syringe-front", "true");
   await expect(viewer).toHaveAttribute("data-syringe-rear", "true");

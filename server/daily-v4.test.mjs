@@ -4,7 +4,6 @@ import {
   initialEngine,
   applyCommand,
   scoreAttempt,
-  dailyRubricVersion,
   supportsVersion,
 } from "../shared/exam.ts";
 import { dailyProbes } from "../shared/maintenance.ts";
@@ -14,7 +13,11 @@ import {
   iseReagentIds,
   tasksReadiness,
 } from "../shared/dailyTasks.ts";
-import { calibrationNeeds, legacyDailyV3 } from "../shared/dailyScenario.ts";
+import {
+  calibrationNeeds,
+  legacyDailyV4 as dailyRubricVersion,
+  legacyDailyV3,
+} from "../shared/dailyScenario.ts";
 
 function scenario(source = "model", restored) {
   let state = restored || initialEngine(dailyRubricVersion),

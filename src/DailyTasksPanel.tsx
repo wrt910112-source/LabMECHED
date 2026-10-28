@@ -1,3 +1,5 @@
+import { canHandleBottle } from "../shared/dailyScenario";
+import { slotById } from "./detergents";
 import type { InstrumentState } from "../shared/dailyScenario";
 import {
   dailySyringes,
@@ -44,7 +46,13 @@ export function DailyTasksPanel({
               <article key={id}>
                 <button onClick={() => focus?.(id)}>{supplyLabel(id)}</button>
                 <span>示意液量 {Math.round(bottles[id].level * 100)}%</span>
-                <button onClick={() => refill(id)}>
+                <button
+                  disabled={
+                    disabled ||
+                    !canHandleBottle(instrument, slotById[id].module)
+                  }
+                  onClick={() => refill(id)}
+                >
                   補充 {supplyLabel(id)}
                 </button>
               </article>

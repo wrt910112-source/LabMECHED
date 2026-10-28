@@ -1,3 +1,8 @@
+import {
+  legacyDailyV4,
+  legacyWeeklyV2,
+  currentWeeklyVersion,
+} from "../shared/dailyScenario.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -23,7 +28,10 @@ import {
 } from "../shared/maintenance.ts";
 import { initialBottles } from "../src/detergents.ts";
 
-function simulation(kind, version = kind === "daily" ? previousDailyRubricVersion : rubricVersion) {
+function simulation(
+  kind,
+  version = kind === "daily" ? previousDailyRubricVersion : rubricVersion,
+) {
   let state = initialEngine(version),
     time = 10000,
     events = [];
@@ -772,12 +780,23 @@ test("API versions new daily attempts separately and resumes a v1 attempt withou
 
 test("API resumes a real v2 state and freezes its result while new attempts receive v3 bottles", async () => {
   const app = createApplication({ dbPath: ":memory:" });
-  await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   const request = await client(app, app.server.address().port);
   try {
-    await request("/auth/setup", "POST", { username: "teacher", name: "教師", password: "Testing123!" });
-    const a = (await request("/attempts", "POST", { kind: "daily" })).value.attempt;
-    app.db.prepare("UPDATE attempts SET version=?,state=? WHERE id=?").run(previousDailyRubricVersion, JSON.stringify(initialEngine(previousDailyRubricVersion)), a.id);
+    await request("/auth/setup", "POST", {
+      username: "teacher",
+      name: "教師",
+      password: "Testing123!",
+    });
+    const a = (await request("/attempts", "POST", { kind: "daily" })).value
+      .attempt;
+    app.db
+      .prepare("UPDATE attempts SET version=?,state=? WHERE id=?")
+      .run(
+        previousDailyRubricVersion,
+        JSON.stringify(initialEngine(previousDailyRubricVersion)),
+        a.id,
+      );
     let active = (await request("/attempts/active")).value.attempt;
     assert.equal(active.version, previousDailyRubricVersion);
     assert.equal(active.sim.instrument, undefined);
@@ -788,16 +807,90 @@ test("API resumes a real v2 state and freezes its result while new attempts rece
       { type: "maintenance", value: true },
       { type: "daily-wipe", target: "R1-1" },
     ].entries()) {
-      const saved = await request(`/attempts/${a.id}/events`, "POST", { id: `00000000-0000-4000-8000-00000000010${i}`, revision: i, source: "model", command });
+      const saved = await request(`/attempts/${a.id}/events`, "POST", {
+        id: `00000000-0000-4000-8000-00000000010${i}`,
+        revision: i,
+        source: "model",
+        command,
+      });
       assert.equal(saved.status, 200);
       if (i === 1) assert.deepEqual(saved.value.attempt.sim.wiped, []);
     }
-    const old = (await request(`/attempts/${a.id}/submit`, "POST", { revision: 4 })).value.attempt;
+    const old = (
+      await request(`/attempts/${a.id}/submit`, "POST", { revision: 4 })
+    ).value.attempt;
     assert.equal(find(old.result, "wipe-R1-1").completed, true);
     assert.equal(old.result.errors.length, 1);
-    const next = (await request("/attempts", "POST", { kind: "daily" })).value.attempt;
+    const next = (await request("/attempts", "POST", { kind: "daily" })).value
+      .attempt;
     assert.equal(next.version, dailyRubricVersion);
-    assert.equal(next.sim.reagents.length, 9);
-    assert.deepEqual((await request(`/attempts/${old.id}`)).value.attempt.result, old.result);
-  } finally { await app.close(); }
+    assert.equal(next.sim.reagents.length, 11);
+    assert.deepEqual(
+      (await request(`/attempts/${old.id}`)).value.attempt.result,
+      old.result,
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test("API retains active v4 / weekly v2 scenarios and freezes old results across v5 / weekly v3 rollout", async () => {
+  const app = createApplication({ dbPath: ":memory:" });
+  await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+  const request = await client(app, app.server.address().port);
+  try {
+    await request("/auth/setup", "POST", {
+      username: "teacher",
+      name: "教師",
+      password: "Testing123!",
+    });
+    for (const [kind, oldVersion, newVersion] of [
+      ["daily", legacyDailyV4, dailyRubricVersion],
+      ["weekly", legacyWeeklyV2, currentWeeklyVersion],
+    ]) {
+      const created = (await request("/attempts", "POST", { kind })).value
+        .attempt;
+      app.db
+        .prepare("UPDATE attempts SET version=?,state=? WHERE id=?")
+        .run(oldVersion, JSON.stringify(initialEngine(oldVersion)), created.id);
+      const active = (await request("/attempts/active")).value.attempt;
+      assert.equal(active.version, oldVersion);
+      if (kind === "daily") assert.equal(active.sim.reagents.length, 9);
+      const lid = (
+        await request(`/attempts/${active.id}/events`, "POST", {
+          id: crypto.randomUUID(),
+          revision: 0,
+          source: "model",
+          command: { type: "cover", target: "iseTop", value: true },
+        })
+      ).value.attempt;
+      const guard = await request(`/attempts/${active.id}/events`, "POST", {
+        id: crypto.randomUUID(),
+        revision: lid.revision,
+        source: "model",
+        command: { type: "bottle", target: "ise-wash-1", value: "refill" },
+      });
+      assert.equal(guard.value.applied, false);
+      assert.equal(
+        guard.value.attempt.sim.bottles["ise-wash-1"].level,
+        initialEngine(oldVersion).sim.bottles["ise-wash-1"].level,
+      );
+      const submitted = (
+        await request(`/attempts/${active.id}/submit`, "POST", {
+          revision: guard.value.attempt.revision,
+        })
+      ).value.attempt;
+      const next = (await request("/attempts", "POST", { kind })).value.attempt;
+      assert.equal(next.version, newVersion);
+      assert.deepEqual(
+        (await request(`/attempts/${active.id}`)).value.attempt.result,
+        submitted.result,
+      );
+      await request(`/attempts/${next.id}/abandon`, "POST", {
+        revision: next.revision,
+      });
+    }
+  } finally {
+    await app.close();
+  }
 });

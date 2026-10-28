@@ -1,3 +1,4 @@
+import { startDaily, selectTarget } from "./ui";
 import { test, expect } from "@playwright/test";
 
 test("ISE cup camera has clear rays with either module-lid state and analyzer main cover closed", async ({
@@ -63,13 +64,11 @@ test("ISE cup view preserves independent covers and spreads all four labels", as
   page,
 }, info) => {
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "01 日保養 開始練習", exact: true })
-    .click();
+  await startDaily(page);
   const ws = page.locator(".workstation");
   const button = (name: string) =>
     ws.getByRole("button", { name, exact: true });
-  await button("開始日保養").click();
+
   await button("Home 主選單").click();
   await button("Analyzer Maintenance").click();
   await button("ISE Maintenance").click();
@@ -78,13 +77,15 @@ test("ISE cup view preserves independent covers and spreads all four labels", as
     viewer = page.locator(".viewer-host");
   const modelButton = (name: string) =>
     panel.getByRole("button", { name, exact: true });
+  await panel.locator("summary").click();
   await panel.getByLabel("ISE 上蓋開啟", { exact: true }).check();
+  await selectTarget(page,"U-L");
   await expect(viewer).toHaveAttribute("data-internal", "false");
   await expect(viewer).toHaveAttribute("data-ise-module", "false");
   await modelButton("放入裝滿 Cleaning Solution 的 CLEAN 杯").click();
   await modelButton("取出並丟棄 CLEAN 杯").click();
   for (const id of ["S-H", "S-L", "U-H", "U-L"]) {
-    await modelButton(id).click();
+    await selectTarget(page,id);
     await modelButton(`放入 ${id} 校正杯`).click();
   }
   await page.waitForTimeout(1000);

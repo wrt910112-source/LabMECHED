@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Daily } from "./DailyTraining";
 import { tests, masQc, urineQc, type RackSelection } from "./requisitionData";
 import "./requisition.css";
@@ -8,6 +8,9 @@ export default function RackRequisition({
   d,
   notify,
   onEntry,
+  onQcEntry,
+  disabled = false,
+  qcSavedVersion = 0,
   exam = false,
   canStart = true,
   calibrationNeeds,
@@ -19,7 +22,13 @@ export default function RackRequisition({
     type: string,
     selection: RackSelection,
     category: "calibration" | "qc" | "sample",
-  ) => void;
+  ) => void | boolean | Promise<boolean>;
+  onQcEntry?: (data: {
+    Serum: string[];
+    Urine: string[];
+  }) => boolean | Promise<boolean>;
+  disabled?: boolean;
+  qcSavedVersion?: number;
   exam?: boolean;
   canStart?: boolean;
   calibrationNeeds?: Pick<RackSelection, "rb" | "cal">;
@@ -32,6 +41,29 @@ export default function RackRequisition({
     [profile, setProfile] = useState(false),
     [profileTests, setProfileTests] = useState<string[]>([]),
     [sub, setSub] = useState("Test Requisition");
+  const [qcDrafts, setQcDrafts] = useState({
+    Serum: [...d.rack.Serum.qc],
+    Urine: [...d.rack.Urine.qc],
+  });
+  const [saving, setSaving] = useState(false);
+  const awaiting = useRef(false);
+  const awaitingVersion = useRef(qcSavedVersion);
+  const locked = disabled || saving;
+  useEffect(() => {
+    if (
+      awaiting.current &&
+      qcSavedVersion > awaitingVersion.current &&
+      !disabled &&
+      ["Serum", "Urine"].every(
+        (t) =>
+          JSON.stringify(d.rack[t].qc) ===
+          JSON.stringify(qcDrafts[t as "Serum" | "Urine"]),
+      )
+    ) {
+      awaiting.current = false;
+      setEditing(false);
+    }
+  }, [d.rack, disabled, qcDrafts, qcSavedVersion]);
   const autoSelect = (selection: RackSelection): RackSelection =>
     tab === "Calibration" &&
     type === "Serum" &&
@@ -43,7 +75,20 @@ export default function RackRequisition({
           cal: [...new Set([...selection.cal, ...calibrationNeeds.cal])],
         }
       : selection;
-  const current = editing ? draft : autoSelect(d.rack[type]);
+  const current = editing
+    ? tab === "QC"
+      ? { ...d.rack[type], qc: qcDrafts[type as "Serum" | "Urine"] }
+      : draft
+    : autoSelect(d.rack[type]);
+  function updateDraft(update: (v: RackSelection) => RackSelection) {
+    if (tab === "QC")
+      setQcDrafts((v) => ({
+        ...v,
+        [type]: update({ ...d.rack[type], qc: v[type as "Serum" | "Urine"] })
+          .qc,
+      }));
+    else setDraft(update);
+  }
   const key = tab === "QC" ? "qc" : "sample";
   function switchTab(n: string) {
     if (editing) {
@@ -53,19 +98,50 @@ export default function RackRequisition({
     setTab(n);
   }
   function select(id: string, k: keyof RackSelection) {
-    setDraft((v) => ({ ...v, [k]: toggle(v[k], id) }));
+    updateDraft((v) => ({ ...v, [k]: toggle(v[k], id) }));
   }
-  function entry() {
+  async function entry() {
+    if (locked) return;
     if (!canStart) {
       notify("請先完成其他全部日保養項目，再進行 Rack Requisition。");
       return;
     }
-    if (onEntry)
-      onEntry(type, draft, tab === "Calibration" ? "calibration" : key);
-    else d.setRack((v) => ({ ...v, [type]: draft }));
-    setEditing(false);
-    notify(`${type} ${tab} 已 Entry 儲存選項；尚未執行量測。`);
+    setSaving(true);
+    try {
+      let success: boolean | void = true;
+      if (tab === "QC") {
+        awaiting.current = true;
+        awaitingVersion.current = qcSavedVersion;
+        if (onQcEntry) success = await onQcEntry(qcDrafts);
+        else
+          d.setRack((v) => ({
+            ...v,
+            Serum: { ...v.Serum, qc: [...qcDrafts.Serum] },
+            Urine: { ...v.Urine, qc: [...qcDrafts.Urine] },
+          }));
+      } else if (onEntry)
+        success = await onEntry(
+          type,
+          draft,
+          tab === "Calibration" ? "calibration" : "sample",
+        );
+      else d.setRack((v) => ({ ...v, [type]: draft }));
+      if (success === false) {
+        notify("保存失敗，兩類草稿已保留，可重試。");
+        return;
+      }
+      awaiting.current = false;
+      setEditing(false);
+      notify(
+        `${tab === "QC" ? "Serum／Urine" : type} ${tab} 已 Entry 儲存選項；尚未執行量測。`,
+      );
+    } catch {
+      notify("保存失敗，草稿已保留。");
+    } finally {
+      setSaving(false);
+    }
   }
+
   const groups =
     type === "Serum"
       ? [
@@ -97,14 +173,23 @@ export default function RackRequisition({
           ))}
         </nav>
       )}
-      <section className={`rack-page ${editing ? "rack-editing" : ""}`}>
+      <section
+        className={`rack-page ${editing ? "rack-editing" : ""}`}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && profile) {
+            e.preventDefault();
+            e.stopPropagation();
+            setProfile(false);
+          }
+        }}
+      >
         <div className="rack-controls">
           <label>
             Type{" "}
             <select
               aria-label="Rack Type"
               value={type}
-              disabled={editing}
+              disabled={locked || (editing && tab !== "QC")}
               onChange={(e) => setType(e.target.value)}
             >
               <option>Serum</option>
@@ -132,7 +217,7 @@ export default function RackRequisition({
             <label>
               Sample ID{" "}
               <input
-                disabled={!editing}
+                disabled={locked || !editing}
                 aria-label="Sample ID"
                 placeholder="教學樣本"
               />
@@ -142,7 +227,7 @@ export default function RackRequisition({
         )}
         <div className="rack-controls">
           <button
-            disabled={!editing || tab !== "QC"}
+            disabled={locked || !editing || tab !== "QC"}
             onClick={() => {
               setProfileTests([...current.qc]);
               setProfile(true);
@@ -154,6 +239,14 @@ export default function RackRequisition({
             <span className="one-point">One Point</span>
           )}
         </div>
+        {tab === "Calibration" &&
+          calibrationNeeds &&
+          calibrationNeeds.rb.length > 0 && (
+            <p className="rack-requirements" role="note">
+              Reagent Check 結果 · RB：{calibrationNeeds.rb.join("、")}；Cali：
+              {calibrationNeeds.cal.join("、")}
+            </p>
+          )}
         <p>* : Partly Selected</p>
         {tab === "Sample" && sub === "Demographics" ? (
           <p>Demographics 入口，尚未加入個案資料。</p>
@@ -179,7 +272,7 @@ export default function RackRequisition({
                           <CalCells
                             key={id}
                             id={id}
-                            editing={editing}
+                            editing={editing && !locked}
                             rb={current.rb.includes(id)}
                             cal={current.cal.includes(id)}
                             select={select}
@@ -203,7 +296,7 @@ export default function RackRequisition({
                 {tests.map((id) => (
                   <button
                     key={id}
-                    disabled={!editing}
+                    disabled={locked || !editing}
                     aria-pressed={current[key].includes(id)}
                     className={current[key].includes(id) ? "qc-selected" : ""}
                     onClick={() => select(id, key)}
@@ -235,7 +328,9 @@ export default function RackRequisition({
         {editing ? (
           <>
             <button
+              disabled={locked}
               onClick={() => {
+                awaiting.current = false;
                 setEditing(false);
                 setProfile(false);
                 notify("已放棄未 Entry 的變更。");
@@ -243,7 +338,7 @@ export default function RackRequisition({
             >
               Exit
             </button>
-            <button disabled={!canStart} onClick={entry}>
+            <button disabled={locked || !canStart} onClick={entry}>
               Entry
             </button>
             <button onClick={() => notify("請直接在表格逐項選取。")}>
@@ -252,11 +347,17 @@ export default function RackRequisition({
             {tab !== "Calibration" && (
               <>
                 <button
-                  onClick={() => setDraft((v) => ({ ...v, [key]: [...tests] }))}
+                  disabled={locked}
+                  onClick={() =>
+                    updateDraft((v) => ({ ...v, [key]: [...tests] }))
+                  }
                 >
                   Select All Tests
                 </button>
-                <button onClick={() => setDraft((v) => ({ ...v, [key]: [] }))}>
+                <button
+                  disabled={locked}
+                  onClick={() => updateDraft((v) => ({ ...v, [key]: [] }))}
+                >
                   Deselect All Tests
                 </button>
               </>
@@ -265,9 +366,13 @@ export default function RackRequisition({
         ) : (
           <>
             <button
-              disabled={!canStart}
+              disabled={locked || !canStart}
               onClick={() => {
                 setDraft(structuredClone(autoSelect(d.rack[type])));
+                setQcDrafts({
+                  Serum: [...d.rack.Serum.qc],
+                  Urine: [...d.rack.Urine.qc],
+                });
                 setEditing(true);
               }}
             >
@@ -361,7 +466,7 @@ export default function RackRequisition({
             <footer>
               <button
                 onClick={() => {
-                  setDraft((v) => ({ ...v, qc: profileTests }));
+                  updateDraft((v) => ({ ...v, qc: profileTests }));
                   setProfile(false);
                 }}
               >

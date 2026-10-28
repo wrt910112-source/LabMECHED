@@ -1,3 +1,4 @@
+import { iseFrontInset, iseCabinetFront } from "./iseLayout";
 import { createEnclosures } from "./enclosures";
 import * as T from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
@@ -492,7 +493,80 @@ export function createInstrument() {
   cabinet(ise, 0.015, 0.45, 1.14);
 
   probe(ise, "ise-sample-probe", 0.055, -0.44, -1);
-  label(ise, "ise-label", "ISE", [0.015, 0.403, 0.998], 0.09, 0.023);
+  label(
+    ise,
+    "ise-label",
+    "ISE",
+    [0.015, 0.403, 0.998 - iseFrontInset],
+    0.09,
+    0.023,
+  );
+  // Extend only the lower side panels to the recessed front, below the bottle tray.
+  for (const x of [-0.197, 0.227])
+    box(
+      ise,
+      `reference-front-side-${x}`,
+      [0.025, 0.33, 0.17],
+      [x, 0.25, 0.655],
+    );
+  const sideCabinet = new T.Group();
+  sideCabinet.name = "ise-side-cabinet";
+  sideCabinet.userData.partId = "ise";
+  ise.add(sideCabinet);
+  const sideX = -0.313;
+  box(
+    sideCabinet,
+    "side-cabinet-back",
+    [0.18, 0.69, 0.018],
+    [sideX, 0.442, -0.43],
+  );
+  for (const x of [-0.397, -0.229])
+    box(
+      sideCabinet,
+      `side-cabinet-wall-${x}`,
+      [0.012, 0.69, 1.16],
+      [x, 0.442, 0.16],
+    );
+  box(
+    sideCabinet,
+    "side-cabinet-base",
+    [0.18, 0.038, 1.16],
+    [sideX, 0.109, 0.16],
+    steel,
+  );
+  box(
+    sideCabinet,
+    "side-cabinet-front",
+    [0.18, 0.56, 0.022],
+    [sideX, 0.411, iseCabinetFront - 0.011],
+  );
+  box(
+    sideCabinet,
+    "side-cabinet-upper-front",
+    [0.18, 0.055, 0.022],
+    [sideX, 0.722, iseCabinetFront - 0.011],
+  );
+  box(
+    sideCabinet,
+    "side-cabinet-dark-cap",
+    [0.18, 0.052, 0.32],
+    [sideX, 0.777, 0.59],
+    black,
+  );
+  box(
+    sideCabinet,
+    "side-cabinet-grip",
+    [0.075, 0.009, 0.012],
+    [sideX, 0.667, iseCabinetFront + 0.006],
+    steel,
+  );
+  box(
+    sideCabinet,
+    "side-cabinet-toe",
+    [0.16, 0.045, 0.026],
+    [sideX, 0.085, iseCabinetFront - 0.025],
+    dark,
+  );
   const iseModel = createIseModel(ise, group);
   for (let i = 0; i < 2; i++)
     bottle(

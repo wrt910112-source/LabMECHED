@@ -1,0 +1,1131 @@
+/* Scene-first simulator. Instrument software retains its own grey-blue palette. */
+.simulator-shell {
+  --hud-bg: rgba(17, 34, 47, 0.94);
+  --hud-line: #456171;
+  --hud-text: #e2edf2;
+  --hud-accent: #69d9eb;
+  --hud-right: 0px;
+  height: 100dvh;
+  min-height: 0;
+  color: var(--hud-text);
+  background: #15232d;
+  overflow: hidden;
+}
+.simulator-shell.has-info,
+.simulator-shell:not([data-mode="explore"]) {
+  --hud-right: clamp(300px, 25vw, 360px);
+}
+.simulator-shell button:focus-visible,
+.hud-dialog button:focus-visible {
+  outline: 2px solid #69d9eb;
+  outline-offset: 3px;
+}
+.simulator-shell .topbar {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 66px;
+  z-index: 25;
+  background: linear-gradient(#11202cee, #11202c99);
+  border: 0;
+  box-shadow: none;
+  gap: 16px;
+  padding: 10px 22px;
+  color: var(--hud-text);
+}
+.simulator-shell .brand,
+.simulator-shell .brand-lab {
+  color: #f3f8fa;
+}
+.simulator-shell .brand-symbol {
+  background: #193945;
+  border: 1px solid var(--hud-accent);
+  color: var(--hud-accent);
+}
+.simulator-shell .top-divider,
+.simulator-shell .top-subtitle,
+.simulator-shell .version,
+.simulator-shell .avatar {
+  display: none;
+}
+.simulator-shell .top-right {
+  gap: 9px;
+}
+.simulator-shell .top-right button {
+  padding: 9px 12px;
+  border: 1px solid #4c6573;
+  border-radius: 7px;
+  color: var(--hud-text);
+  background: #172c3bd9;
+  font-size: 12px;
+}
+.hud-mode {
+  font-size: 12px;
+  color: #a7ccdb;
+  margin-right: 6px;
+}
+.simulator-shell .workspace,
+.simulator-shell .main-content {
+  display: block;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  max-width: none;
+}
+.simulator-shell .page-heading,
+.simulator-shell .lower-bar,
+.simulator-shell .page-footer {
+  display: none;
+}
+.simulator-shell .explorer-layout {
+  display: block;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+}
+.simulator-shell .model-stage {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  width: 100vw;
+  border: 0;
+  border-radius: 0;
+  background: radial-gradient(
+    ellipse at 45% 40%,
+    #62747d 0,
+    #354954 43%,
+    #14232f 100%
+  );
+}
+.simulator-shell .model-stage::after {
+  display: none;
+}
+.simulator-shell .viewer-host {
+  position: absolute;
+  inset: 0;
+}
+.simulator-shell .stage-caption,
+.simulator-shell .axis-indicator {
+  display: none;
+}
+.simulator-shell .stage-top {
+  top: 65px;
+  padding: 10px 20px;
+  color: #abc7d2;
+  pointer-events: none;
+}
+.simulator-shell .scene-title {
+  color: #b5ced8;
+}
+.simulator-shell .render-badge {
+  margin-right: var(--hud-right);
+  color: #b7d6dc;
+}
+.simulator-shell .view-tabs {
+  position: fixed;
+  bottom: 22px;
+  top: auto;
+  left: calc((100vw - var(--hud-right)) / 2);
+  transform: translateX(-50%);
+  max-width: calc(100vw - var(--hud-right) - 180px);
+  width: max-content;
+  display: flex;
+  overflow-x: auto;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid #4d6b7a;
+  border-radius: 12px;
+  background: var(--hud-bg);
+  backdrop-filter: blur(12px);
+  z-index: 16;
+}
+.simulator-shell .view-tabs button {
+  flex: none;
+  color: #c7dce4;
+  padding: 9px;
+  font-size: 11px;
+}
+.simulator-shell .view-tabs button.active {
+  color: #08232f;
+  background: #69d9eb;
+}
+.simulator-shell .stage-tools {
+  position: fixed;
+  top: auto;
+  bottom: 84px;
+  right: calc(var(--hud-right) + 22px);
+  display: flex;
+  flex-direction: row;
+  border: 1px solid #4d6b7a;
+  background: var(--hud-bg);
+  padding: 4px;
+  border-radius: 9px;
+  z-index: 16;
+}
+.simulator-shell .stage-tools button {
+  color: #cce3eb;
+  width: 34px;
+  height: 32px;
+}
+.simulator-shell .stage-tools > span {
+  display: none;
+}
+.simulator-shell .stage-bottom {
+  position: fixed;
+  left: 18px;
+  bottom: 27px;
+  right: auto;
+  top: auto;
+  height: auto;
+  display: block;
+  padding: 0;
+  background: none;
+  border: 0;
+  z-index: 17;
+}
+.simulator-shell .mouse-hint {
+  display: none;
+}
+.simulator-shell .label-toggle {
+  padding: 10px;
+  background: var(--hud-bg);
+  border: 1px solid #4d6b7a;
+  border-radius: 8px;
+  color: #b9dbe4;
+}
+.simulator-shell .sidebar {
+  display: none;
+  position: fixed;
+  top: 78px;
+  left: 18px;
+  bottom: 90px;
+  width: 280px;
+  height: auto;
+  min-height: 0;
+  background: var(--hud-bg);
+  border: 1px solid #456171;
+  border-radius: 12px;
+  z-index: 22;
+  padding: 18px;
+  backdrop-filter: blur(14px);
+}
+.simulator-shell.directory-open .sidebar {
+  display: flex;
+}
+.hud-drawer-title,
+.hud-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.hud-drawer-title h2 {
+  font-size: 17px;
+  margin: 0;
+}
+.hud-drawer-title button {
+  color: #bdd9e3;
+}
+.simulator-shell .sidebar .search {
+  background: #203846;
+  border-color: #486371;
+}
+.simulator-shell .sidebar input {
+  color: #e2edf2;
+}
+.simulator-shell .part-nav {
+  overflow: auto;
+  min-height: 0;
+}
+.simulator-shell .part-item {
+  color: #bfd7e2;
+  font-size: 12px;
+}
+.simulator-shell .part-item.active {
+  background: #294e5a;
+  color: #8de9f3;
+}
+.simulator-shell .sidebar-bottom {
+  display: none;
+}
+.hud-rail {
+  position: fixed;
+  right: 18px;
+  top: 80px;
+  bottom: 92px;
+  width: clamp(300px, 25vw, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 18;
+  pointer-events: none;
+}
+.hud-rail > * {
+  pointer-events: auto;
+}
+.hud-card,
+.simulator-shell .detail-panel {
+  border: 1px solid #4b6878;
+  border-radius: 12px;
+  background: var(--hud-bg);
+  color: var(--hud-text);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 36px #0003;
+}
+.simulator-shell .detail-panel {
+  width: auto;
+  flex: 1;
+  min-height: 190px;
+  max-height: 100%;
+  height: auto;
+  padding: 17px;
+  overflow: auto;
+  display: block;
+}
+.simulator-shell [hidden] {
+  display: none !important;
+}
+.hud-card-header {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.hud-card-header > div {
+  display: flex;
+  gap: 12px;
+}
+.hud-card-header button {
+  color: #c4dbe6;
+}
+.hud-info-tabs {
+  display: flex;
+  border: 1px solid #476473;
+  border-radius: 7px;
+  padding: 3px;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+.hud-info-tabs button {
+  flex: 1;
+  color: #c1d8e2;
+  padding: 7px 5px;
+  font-size: 12px;
+}
+.hud-info-tabs button[aria-pressed="true"] {
+  color: #112b36;
+  background: #6bdeed;
+  border-radius: 5px;
+}
+.hud-focus {
+  color: #9ce3ed;
+  font-size: 11px;
+  padding: 8px 0;
+}
+.hud-part-info > small {
+  font-size: 11px;
+  color: #93b7c9;
+}
+.hud-part-info h2 {
+  font-size: 21px;
+  margin: 10px 0;
+}
+.hud-part-info p {
+  font-size: 13px;
+  line-height: 1.9;
+  color: #d0e0e8;
+}
+.hud-part-en {
+  font-size: 10px !important;
+  color: #87a7b8 !important;
+}
+.hud-part-info figure {
+  margin: 12px 0;
+}
+.hud-part-info img {
+  width: 100%;
+  max-height: 230px;
+  object-fit: contain;
+  background: #0e1e28;
+  border-radius: 7px;
+}
+.hud-part-info figcaption {
+  font-size: 11px;
+  color: #9bb8c7;
+  margin-top: 7px;
+}
+.hud-warning {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #96713d;
+  background: #51402066;
+  color: #f2ce87;
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 12px;
+  border-radius: 8px;
+}
+.hud-operation-content h3 {
+  font-size: 15px;
+  margin: 12px 0;
+}
+.simulator-shell .detail-panel button:not(.hud-info-tabs button) {
+  border: 1px solid #486777;
+  border-radius: 6px;
+  background: #223c4b;
+  color: #daedf3;
+  min-height: 32px;
+  padding: 8px;
+  font-size: 12px;
+}
+.simulator-shell .detail-panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.simulator-shell .detail-panel label,
+.simulator-shell .detail-panel p,
+.simulator-shell .detail-panel small,
+.simulator-shell .detail-panel legend {
+  color: #b9d0dc;
+}
+.simulator-shell .detail-panel input,
+.simulator-shell .detail-panel select {
+  background: #122735;
+  color: #e1eef4;
+  border-color: #547282;
+  max-width: 100%;
+}
+.simulator-shell .detail-panel fieldset {
+  border-color: #4b6573;
+}
+.simulator-shell .detail-panel .description,
+.simulator-shell .detail-panel .detail-header,
+.simulator-shell .detail-panel .detail-title,
+.simulator-shell .detail-panel .detail-tags,
+.simulator-shell .detail-panel .photo-heading,
+.simulator-shell .detail-panel .reference-photo,
+.simulator-shell .detail-panel .reference-credit,
+.simulator-shell .detail-panel .photo-pagination,
+.simulator-shell .detail-panel .source-link,
+.simulator-shell .detail-panel .detail-tip,
+.simulator-shell .detail-panel .detail-navigation {
+  display: none;
+}
+.context-covers {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+.context-covers button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+.context-covers small {
+  font-size: 10px;
+  white-space: nowrap;
+}
+.simulator-shell .detail-panel .bottle-controls,
+.simulator-shell .detail-panel .daily-tasks,
+.simulator-shell .detail-panel .supply-card {
+  background: #1b3443;
+  border-color: #476575;
+}
+.simulator-shell .practice-targets {
+  display: none;
+}
+.quest-log {
+  overflow: auto;
+  flex: none;
+  max-height: calc(100dvh - 180px);
+  padding: 13px;
+}
+.has-info .quest-log {
+  max-height: 38vh;
+}
+.quest-log header button {
+  background: transparent;
+  border: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  color: #dcecf3;
+  font-size: 13px;
+}
+.quest-log header b {
+  margin-left: auto;
+  font-size: 13px;
+}
+.quest-log progress {
+  width: 100%;
+  height: 5px;
+  accent-color: #70ddeb;
+  margin-top: 10px;
+}
+.quest-log ol {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  max-height: 230px;
+  overflow: auto;
+}
+.has-info .quest-log ol {
+  max-height: 110px;
+}
+.quest-log li button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 7px;
+  color: #c4dbe5;
+  text-align: left;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+.quest-log li button:disabled {
+  color: #8199a6;
+  cursor: not-allowed;
+}
+.quest-log li button[aria-current="step"] {
+  background: #244d5d;
+  border-color: #68cddd;
+  color: #def9fc;
+}
+.quest-log li button small {
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.quest-dot {
+  width: 11px;
+  height: 11px;
+  border: 1px solid #79d5e6;
+  border-radius: 50%;
+  flex: none;
+}
+.quest-objective {
+  padding: 10px 0 0;
+  border-top: 1px solid #415b6a;
+}
+.quest-objective > small {
+  color: #87b4c5;
+  font-size: 10px;
+  display: block;
+}
+.quest-objective strong {
+  display: block;
+  font-size: 13px;
+  margin-top: 7px;
+  color: #b5eff4;
+}
+.quest-objective p {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #a9c6d4;
+}
+.hud-inline {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.hud-inline button,
+.hud-restore {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #476575;
+  border-radius: 6px;
+  background: #1d3b4b;
+  color: #c5e8ef;
+  font-size: 11px;
+}
+.hud-toast {
+  position: fixed;
+  left: 30vw;
+  top: 84px;
+  padding: 14px;
+  background: #173e45;
+  border: 1px solid #6ad2dd;
+  border-radius: 8px;
+  color: #c5f6f1;
+  font-size: 13px;
+}
+.hud-success {
+  color: #90e0cf;
+}
+.guidance-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+}
+.guidance-markers span {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  border: 1px solid #78dce8;
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: #baf7fb;
+  background: #123e4ee6;
+  box-shadow: 0 0 16px #49d9ec33;
+  font-size: 11px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.hud-dialog {
+  padding: 24px;
+  max-width: min(1100px, 92vw);
+  max-height: 88dvh;
+  width: 100%;
+  border: 1px solid #5d899a;
+  border-radius: 16px;
+  background: #132735f5;
+  color: #e2edf2;
+  box-shadow: 0 30px 100px #0008;
+  overflow: auto;
+}
+.hud-dialog::backdrop {
+  background: #08131db3;
+  backdrop-filter: blur(5px);
+}
+.hud-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.hud-dialog h2 {
+  margin: 5px 0;
+  font-size: 26px;
+}
+.hud-dialog small {
+  color: #93b9ca;
+  font-size: 11px;
+}
+.hud-dialog button {
+  color: #cfe4ee;
+  padding: 10px 14px;
+  border-radius: 7px;
+  border: 1px solid #4a6b7d;
+  background: #203b4d;
+}
+.mission-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.hud-dialog .mission-tile {
+  padding: 12px;
+  text-align: left;
+}
+.mission-tile > span {
+  color: #84cbdf;
+  font-size: 20px;
+}
+.mission-tile img {
+  width: 100%;
+  height: 110px;
+  object-fit: cover;
+  margin-top: 10px;
+  border-radius: 5px;
+}
+.mission-tile h3 {
+  font-size: 19px;
+  margin: 12px 0;
+}
+.mission-tile p {
+  font-size: 12px;
+  color: #a7c8d7;
+  line-height: 1.6;
+}
+.hud-dialog button[aria-pressed="true"] {
+  border-color: #73e0ec;
+  background: #244d5f;
+}
+.hud-dialog button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.mission-modes {
+  display: flex;
+  gap: 14px;
+  margin: 20px 0;
+}
+.mission-modes button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mission-modes small {
+  display: block;
+  width: 100%;
+  text-align: left;
+  line-height: 1.6;
+}
+.mission-summary {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #afcddc;
+}
+.hud-dialog footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.hud-primary,
+.hud-dialog .hud-primary {
+  background: #6cd8e8 !important;
+  color: #0b2b38 !important;
+  border-color: #8ce8f1 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.workstation {
+  max-width: calc(100vw - 40px);
+  max-height: calc(100dvh - 60px);
+}
+.workstation-guidance {
+  font-size: 12px;
+  padding: 8px 18px;
+  background: #173c4c;
+  color: #b3e9f3;
+  border-bottom: 1px solid #658591;
+}
+.simulator-shell .scene-markers button {
+  color: #d1e6ed;
+  background: #163443e8;
+  border-color: #4f7789;
+}
+@media (max-width: 900px) {
+  .simulator-shell .topbar {
+    padding: 8px 12px;
+  }
+  .simulator-shell .brand-lab,
+  .hud-mode {
+    display: none;
+  }
+  .simulator-shell .top-right {
+    gap: 4px;
+  }
+  .simulator-shell .top-right button {
+    font-size: 10px;
+    padding: 8px;
+  }
+  .hud-rail {
+    width: 285px;
+  }
+  .mission-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .simulator-shell .view-tabs {
+    max-width: calc(100vw - 150px);
+    left: 50%;
+  }
+  .simulator-shell .stage-tools {
+    right: 20px;
+  }
+  .hud-dialog {
+    padding: 16px;
+  }
+}
+
+/* Assessment uses the same scene frame, with neutral controls and a separate instrument screen. */
+.simulator-shell .exam-portal:has(.exam-room) {
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #142632;
+}
+.simulator-shell .exam-portal:has(.exam-room) > .exam-header {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 58px;
+  z-index: 30;
+  padding: 10px 20px;
+  color: #dcebf2;
+  background: #102330e8;
+  border-color: #385160;
+}
+.simulator-shell .exam-portal:has(.exam-room) .exam-room {
+  position: static;
+  padding: 0;
+  min-height: 0;
+  overflow: visible;
+}
+.simulator-shell .exam-room-toolbar {
+  position: fixed;
+  inset: 58px 0 auto;
+  z-index: 29;
+  display: flex;
+  gap: 8px;
+  padding: 9px 20px;
+  color: #dcebf2;
+  background: #193341e8;
+  border-bottom: 1px solid #426170;
+}
+.simulator-shell .exam-room-toolbar button {
+  font-size: 12px;
+  padding: 7px 10px;
+  background: #294958;
+  color: #d8ecf4;
+  border-color: #56717e;
+}
+.simulator-shell .exam-room-toolbar > span {
+  font-variant-numeric: tabular-nums;
+  color: #ffda91;
+  margin-right: 12px;
+}
+.simulator-shell .exam-model-layout {
+  position: static;
+  display: block;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+}
+.simulator-shell .exam-model-stage {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: radial-gradient(
+    ellipse at 40% 45%,
+    #60727b,
+    #354c57 45%,
+    #14232f
+  );
+}
+.simulator-shell .exam-quest-summary {
+  position: fixed;
+  right: 20px;
+  top: 120px;
+  width: clamp(300px, 25vw, 360px);
+  padding: 15px;
+  z-index: 22;
+}
+.exam-quest-summary strong {
+  font-size: 15px;
+  color: #e6c785;
+}
+.exam-quest-summary p {
+  font-size: 12px;
+  color: #bdd6e2;
+}
+.exam-quest-summary span {
+  display: block;
+  color: #d1e9f0;
+  font-size: 13px;
+}
+.exam-quest-summary small {
+  display: block;
+  font-size: 10px;
+  margin-top: 8px;
+  color: #91b4c5;
+}
+.simulator-shell .exam-model-panel {
+  position: fixed;
+  right: 20px;
+  top: 270px;
+  bottom: 20px;
+  width: clamp(300px, 25vw, 360px);
+  max-height: none;
+  padding: 14px;
+  background: var(--hud-bg);
+  border: 1px solid #4b6878;
+  border-radius: 12px;
+  color: #d6e7ef;
+  overflow: auto;
+  z-index: 23;
+}
+.simulator-shell .exam-model-panel button {
+  background: #254453;
+  border-color: #526e7e;
+  color: #d4e8f2;
+  font-size: 12px;
+}
+.simulator-shell .exam-model-panel input:not([type="checkbox"]),
+.simulator-shell .exam-model-panel select {
+  background: #193240;
+  border-color: #527283;
+  color: #d2e6ef;
+}
+.simulator-shell .exam-model-panel fieldset {
+  border-color: #456575;
+}
+.simulator-shell .exam-model-panel legend,
+.simulator-shell .exam-model-panel label,
+.simulator-shell .exam-model-panel p {
+  color: #b8d3df;
+}
+.simulator-shell .exam-tool-tabs {
+  gap: 5px;
+  margin: 8px 0;
+}
+.simulator-shell .exam-tool-tabs button {
+  padding: 7px;
+}
+.simulator-shell .exam-view-tools {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  right: 400px;
+  z-index: 22;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 7px;
+  background: #15303de8;
+  border: 1px solid #4e6b7c;
+  border-radius: 10px;
+}
+.simulator-shell .exam-view-tools button {
+  background: #254453;
+  color: #c9e4ee;
+  border-color: #557281;
+  font-size: 11px;
+  padding: 7px;
+}
+.simulator-shell .exam-save-status {
+  position: fixed;
+  z-index: 28;
+  left: 20px;
+  bottom: 90px;
+  max-width: calc(100vw - 430px);
+  border-radius: 7px;
+  padding: 10px;
+  background: #193b48;
+  color: #c4e5ed;
+}
+.simulator-shell .exam-error.exam-save-status {
+  background: #513024;
+  color: #fbd1aa;
+}
+.exam-workstation-overlay {
+  position: fixed;
+  inset: 118px 400px 20px 20px;
+  background: #dfe5ea;
+  border: 2px solid #697f8c;
+  border-radius: 8px;
+  z-index: 26;
+  overflow: auto;
+  color: #23313c;
+  box-shadow: 0 20px 60px #0005;
+}
+.exam-workstation-overlay[hidden] {
+  display: none !important;
+}
+.simulator-shell .exam-workstation-overlay .exam-workstation {
+  height: 100%;
+  max-height: none;
+  overflow: auto;
+  min-height: 0;
+  background: #e4e8ed;
+  color: #23313c;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+.simulator-shell .exam-workstation-overlay .ws-title {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #506978;
+  color: white;
+  padding: 12px;
+}
+.exam-panel-restore {
+  position: fixed;
+  right: 20px;
+  top: 270px;
+  z-index: 25;
+}
+.simulator-shell .exam-model-panel[hidden] {
+  display: none !important;
+}
+.simulator-shell .exam-portal .mission-card[data-requested="true"] {
+  border: 2px solid #4b9fb2;
+}
+@media (max-width: 1100px) {
+  .exam-workstation-overlay {
+    right: 20px;
+    bottom: 155px;
+  }
+  .simulator-shell .exam-quest-summary {
+    top: auto;
+    bottom: 20px;
+    height: 120px;
+  }
+  .simulator-shell .exam-model-panel {
+    width: 285px;
+  }
+}
+
+.workstation .hud-control-target {
+  outline: 2px solid #3295ad !important;
+  outline-offset: 2px;
+}
+.hud-toast {
+  z-index: 200;
+  pointer-events: none;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 55vw;
+}
+.instrument-state-details {
+  border: 1px solid #426272;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.simulator-shell .exam-model-panel fieldset {
+  background: #1b3442;
+}
+.simulator-shell .exam-model-panel button[aria-pressed="true"],
+.simulator-shell .exam-room-toolbar button[aria-pressed="true"] {
+  background: #69d7e8;
+  color: #102d3a;
+  border-color: #85e2ee;
+}
+
+.directory-targets {
+  margin: 14px 0;
+  border-top: 1px solid #375066;
+  padding-top: 12px;
+}
+.directory-targets summary {
+  padding: 10px;
+  cursor: pointer;
+}
+.directory-targets button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 4px 0;
+}
+.hud-part-status {
+  color: #8bdaea;
+  font-size: 12px;
+  padding: 10px;
+  border: 1px solid #3b5666;
+  border-radius: 6px;
+}
+.hud-photo-open {
+  padding: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+.hud-photo-filename {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.hud-photo-dialog {
+  max-width: 85vw;
+  max-height: 90vh;
+}
+.hud-photo-dialog img {
+  max-width: 78vw;
+  max-height: 72vh;
+  object-fit: contain;
+  display: block;
+}
+
+/* Save feedback occupies the HUD gutter, never native software controls. */
+.simulator-shell
+  .exam-room:has(.exam-workstation-overlay:not([hidden]))
+  .exam-save-status {
+  left: auto;
+  right: 20px;
+  bottom: 20px;
+  width: 340px;
+  max-width: calc(25vw - 20px);
+}
+.simulator-shell .exam-save-status:not(.exam-error) {
+  pointer-events: none;
+}
+.simulator-shell .exam-save-status button {
+  pointer-events: auto;
+}
+
+.simulator-shell .exam-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  z-index: 80;
+  color: #dceaf3;
+}
+.simulator-shell .exam-confirm-backdrop:not([open]) {
+  display: none;
+}
+.simulator-shell .exam-confirm-backdrop .exam-card {
+  background: #193344;
+  border: 1px solid #658493;
+  box-shadow: 0 20px 80px #0008;
+}
+
+/* Keep the current objective and its actions reachable above the part card. */
+.has-info .quest-log {
+  max-height: 46dvh;
+}
+.has-info .quest-log ol {
+  max-height: 84px;
+  margin: 8px 0;
+}
+.quest-objective p {
+  max-height: 60px;
+  overflow: auto;
+}
+
+/* Original practice panels inherit the HUD palette only in the scene rail. */
+.simulator-shell .detail-panel .model-practice,
+.simulator-shell .detail-panel .weekly-panel {
+  color: var(--hud-text);
+  background: transparent;
+}
+.simulator-shell .detail-panel .weekly-panel fieldset {
+  background: transparent;
+}
+.simulator-shell .detail-panel .weekly-w2-window {
+  background: #1c3443;
+  border-color: #486575;
+}
+.simulator-shell .detail-panel .weekly-w2-table {
+  background: #18303e;
+  color: var(--hud-text);
+}
+.simulator-shell .practice-markers button {
+  background: #163443ed;
+  color: #d1eaf3;
+  border-color: #678fa1;
+}
+.simulator-shell .practice-markers button[aria-pressed="true"] {
+  background: #69d9eb;
+  color: #12313e;
+}
+
+.quest-log header button:hover:not(:disabled) {
+  background: #244655;
+  color: #dcecf3;
+}

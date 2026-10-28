@@ -1,3 +1,4 @@
+import { iseFrontInset, iseDiagZ } from "./iseLayout";
 import * as T from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { PartId } from "./data";
@@ -175,8 +176,8 @@ export function createIseModel(
   box(
     parent,
     "ise-cavity-floor",
-    [0.415, 0.014, 0.76],
-    [0.015, 0.69, 0.065],
+    [0.415, 0.014, 0.76 - iseFrontInset],
+    [0.015, 0.69, 0.065 - iseFrontInset / 2],
     metal,
   );
   // Solid module boundary: opening the metal lid never opens the reagent bay below.
@@ -184,11 +185,21 @@ export function createIseModel(
     parent,
     "ise-module-front-bulkhead",
     [0.3, 0.2, 0.016],
-    [-0.04, 0.794, 0.454],
+    [-0.04, 0.794, 0.454 - iseFrontInset],
     metal,
   );
-  box(parent, "ise-left-wall", [0.013, 0.212, 0.78], [-0.192, 0.795, 0.065]);
-  box(parent, "ise-right-deck", [0.125, 0.027, 0.78], [0.174, 0.895, 0.065]);
+  box(
+    parent,
+    "ise-left-wall",
+    [0.013, 0.212, 0.78 - iseFrontInset],
+    [-0.192, 0.795, 0.065 - iseFrontInset / 2],
+  );
+  box(
+    parent,
+    "ise-right-deck",
+    [0.125, 0.027, 0.78 - iseFrontInset],
+    [0.174, 0.895, 0.065 - iseFrontInset / 2],
+  );
   const rearShape = rectangle(0.43, 0.27, 0.005);
   rearShape.holes.push(
     new T.Path(
@@ -209,7 +220,12 @@ export function createIseModel(
   rearDeck.name = "ise-rear-deck";
   rearDeck.position.set(0.015, 0.879, -0.445);
   parent.add(rearDeck);
-  box(parent, "ise-front-rim", [0.43, 0.035, 0.095], [0.015, 0.895, 0.507]);
+  box(
+    parent,
+    "ise-front-rim",
+    [0.43, 0.035, 0.095],
+    [0.015, 0.895, 0.507 - iseFrontInset],
+  );
   box(
     parent,
     "ise-inner-back-wall",
@@ -220,26 +236,41 @@ export function createIseModel(
     parent,
     "diag-border",
     [0.039, 0.005, 0.038],
-    [0.16, 0.916, 0.506],
+    [0.16, 0.916, iseDiagZ],
     black,
   );
   box(
     parent,
     "diag-green",
     [0.028, 0.007, 0.026],
-    [0.16, 0.92, 0.506],
+    [0.16, 0.92, iseDiagZ],
     new T.MeshStandardMaterial({ color: "#219449" }),
   );
-  label(parent, "diag-label", "DIAG", 0.16, 0.919, 0.545, 0.06, 0.013);
+  label(
+    parent,
+    "diag-label",
+    "DIAG",
+    0.16,
+    0.919,
+    0.545 - iseFrontInset,
+    0.06,
+    0.013,
+  );
   // Actual hinged panel, separate from the dark outer safety cover.
   const lid = new T.Group();
   lid.name = "ise-maintenance-cover";
-  lid.position.set(-0.168, 0.913, 0.06);
+  lid.position.set(-0.168, 0.913, 0.06 - iseFrontInset / 2);
   parent.add(lid);
-  box(lid, "cover-panel", [0.277, 0.014, 0.78], [0.1385, 0, 0]);
-  box(lid, "cover-underside", [0.26, 0.003, 0.753], [0.1385, -0.008, 0], metal);
+  box(lid, "cover-panel", [0.277, 0.014, 0.78 - iseFrontInset], [0.1385, 0, 0]);
+  box(
+    lid,
+    "cover-underside",
+    [0.26, 0.003, 0.753 - iseFrontInset],
+    [0.1385, -0.008, 0],
+    metal,
+  );
   box(lid, "cover-handle", [0.023, 0.01, 0.14], [0.215, 0.005, 0.075]);
-  for (const z of [-0.26, 0.26])
+  for (const z of [-0.22, 0.22])
     cyl(lid, `hinge-${z}`, 0.009, 0.031, [0, 0, z], metal).rotation.x =
       Math.PI / 2;
   for (let i = 0; i < 3; i++)
@@ -301,16 +332,16 @@ export function createIseModel(
       }),
     );
   });
-  cyl(parent, "cell-1-pump", 0.044, 0.05, [-0.115, 0.723, 0.365]);
-  label(parent, "cell-1-label", "CELL 1", -0.115, 0.702, 0.428, 0.09, 0.02);
+  cyl(parent, "cell-1-pump", 0.044, 0.05, [-0.115, 0.723, 0.135]);
+  label(parent, "cell-1-label", "CELL 1", -0.115, 0.702, 0.178, 0.09, 0.02);
   tube(
     parent,
     "pump-loop",
     [
-      [-0.148, 0.739, 0.335],
-      [-0.164, 0.765, 0.285],
-      [-0.084, 0.768, 0.271],
-      [-0.077, 0.739, 0.335],
+      [-0.148, 0.739, 0.13],
+      [-0.164, 0.765, 0.09],
+      [-0.084, 0.768, 0.09],
+      [-0.077, 0.739, 0.13],
     ],
     0.004,
   );

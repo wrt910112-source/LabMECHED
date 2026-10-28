@@ -27,6 +27,7 @@ interface Props {
   bottles: BottleStates;
   mode: CareMode;
   busy: boolean;
+  disabledReason?: string;
   message: string;
   onMode: (m: CareMode) => void;
   onSlot: (id: string) => void;
@@ -170,7 +171,7 @@ export default function DetergentPanel(p: Props) {
               )}
               <div className="bottle-actions">
                 <button
-                  disabled={p.busy || !fluid}
+                  disabled={p.busy || !!p.disabledReason || !fluid} title={p.disabledReason}
                   onClick={() => p.onAction({ kind: "replace", fluid })}
                 >
                   <Replace size={14} />
@@ -178,7 +179,7 @@ export default function DetergentPanel(p: Props) {
                 </button>
                 <button
                   disabled={
-                    p.busy || !bottle.fluid || wrongMode || bottle.level >= 1
+                    p.busy || !!p.disabledReason || !bottle.fluid || wrongMode || bottle.level >= 1
                   }
                   onClick={() => p.onAction({ kind: "refill" })}
                 >
@@ -186,7 +187,7 @@ export default function DetergentPanel(p: Props) {
                   補充
                 </button>
                 <button
-                  disabled={p.busy || !bottle.fluid}
+                  disabled={p.busy || !!p.disabledReason || !bottle.fluid} title={p.disabledReason}
                   onClick={() => p.onAction({ kind: "remove" })}
                 >
                   <ArrowUpFromLine size={14} />
@@ -202,7 +203,7 @@ export default function DetergentPanel(p: Props) {
       <p role="status" className="bottle-message">
         {p.busy
           ? "瓶子操作中…"
-          : p.message || "可點選瓶子或空槽，選擇更換、補充或取出。"}
+          : p.disabledReason || p.message || "可點選瓶子或空槽，選擇更換、補充或取出。"}
       </p>
       <div className="wash-grid-title">
         <span>

@@ -36,6 +36,16 @@ import {
 import { dailyDependencies, dailyReadiness } from "./dailyRules.ts";
 import {
   currentDailyVersion,
+  hasDailyIseDrain,
+  currentWeeklyVersion,
+  legacyWeeklyV2,
+  legacyDailyV4,
+  hasDailyTasks,
+  hasWeeklyHardware,
+  hasRevisedWorkstation,
+  canHandleBottle,
+  validProbeDiag,
+  canRunIseProbeDiag,
   legacyDailyV3,
   hasModernDaily,
   canRunIseProgram,
@@ -51,7 +61,7 @@ import {
 } from "./dailyScenario.ts";
 
 export const rubricVersion = "AU5800-2026-10-v1";
-export const weeklyRubricVersion = "AU5800-weekly-2026-10-21-v2";
+export const weeklyRubricVersion = currentWeeklyVersion;
 export const previousDailyRubricVersion = "AU5800-2026-10-21-v2";
 export const dailyRubricVersion = currentDailyVersion;
 export type ExamKind = "daily" | "weekly";
@@ -61,7 +71,10 @@ export const supportsVersion = (kind: ExamKind, version: string) =>
   version === versionForKind(kind) ||
   version === rubricVersion ||
   (kind === "daily" &&
-    [previousDailyRubricVersion, legacyDailyV3].includes(version));
+    [previousDailyRubricVersion, legacyDailyV3, legacyDailyV4].includes(
+      version,
+    )) ||
+  (kind === "weekly" && version === legacyWeeklyV2);
 export const kindNames = { daily: "日保養", weekly: "周保養" };
 export type User = {
   id: string;
@@ -109,7 +122,8 @@ export type ActionType =
   | "cal-review"
   | "reagent"
   | "reagent-check"
-  | "rack";
+  | "rack"
+  | "rack-qc-entry";
 export interface ExamCommand {
   type: ActionType;
   target?: string;
@@ -232,6 +246,7 @@ export interface Attempt {
   revision: number;
   sim: Simulation;
   result: ExamResult | null;
+  progress?: { completedGroups: number; totalGroups: number };
   events?: ExamEvent[];
   user?: User;
 }
@@ -243,12 +258,8 @@ export function initialEngine(version = dailyRubricVersion): EngineState {
     skippedMs: 0,
     waitStarted: 0,
     sim: {
-      ...(version === dailyRubricVersion
-        ? { dailyTasks: initialDailyTasks() }
-        : {}),
-      ...([dailyRubricVersion, legacyDailyV3, weeklyRubricVersion].includes(
-        version,
-      )
+      ...(hasDailyTasks(version) ? { dailyTasks: initialDailyTasks() } : {}),
+      ...(hasModernDaily(version) || hasWeeklyHardware(version)
         ? { instrument: initialInstrument() }
         : {}),
       maintenance: false,
@@ -299,7 +310,9 @@ export function initialEngine(version = dailyRubricVersion): EngineState {
       prime: 0,
       drops: ["", "", "", ""],
       cal: { serum: false, urine: false, checked: false },
-      reagents: hasModernDaily(version) ? examReagents() : initialReagents(),
+      reagents: hasModernDaily(version)
+        ? examReagents(version)
+        : initialReagents(),
       reagentChecked: false,
       rack: emptyRack(),
     },
@@ -371,10 +384,11 @@ export function applyCommand(
   };
   const busy = !!s.batch || s.phase === "w2" || s.phase === "photocal";
   const modern = kind === "daily" && hasModernDaily(version);
-  const v4 = kind === "daily" && version === dailyRubricVersion;
+  const v4 = kind === "daily" && hasDailyTasks(version);
+  const revisedWorkstation = hasRevisedWorkstation(version);
+  const v5 = kind === "daily" && hasDailyIseDrain(version);
   const instrument = s.instrument ?? initialInstrument();
-  const hardware =
-    modern || (kind === "weekly" && version === weeklyRubricVersion);
+  const hardware = modern || (kind === "weekly" && hasWeeklyHardware(version));
   const physical = () =>
     hardware
       ? instrument.analyzerMaintenance && canWipe(instrument, busy)
@@ -409,6 +423,7 @@ export function applyCommand(
     "reagent",
     "reagent-check",
     "rack",
+    "rack-qc-entry",
   ];
   const weeklyTypes = [
     "prepared",
@@ -429,8 +444,13 @@ export function applyCommand(
     "photocal-review",
     "diluent-clean",
   ];
+  const dailyIseCommand =
+    v5 &&
+    ((c.type === "diag-config" && id === "ISE") ||
+      (c.type === "diag" && id === "ise" && s.diagConfig.target === "ISE") ||
+      (c.type === "drain-result" && id === "ISE"));
   if (
-    (kind === "daily" && weeklyTypes.includes(c.type)) ||
+    (kind === "daily" && weeklyTypes.includes(c.type) && !dailyIseCommand) ||
     (kind === "weekly" && dailyTypes.includes(c.type))
   )
     return fail("此操作不屬於本次保養測驗");
@@ -648,6 +668,11 @@ export function applyCommand(
         expected =
           d.target === "mix" ? "front" : d.target === "ISE" ? "ise" : "sample";
       out.label = `DIAG ${id}：${d.target}`;
+      if (v5 && d.target === "ISE" && !canRunIseProbeDiag(instrument, busy))
+        return fail(
+          "ISE 排水程序狀態不允許",
+          "請勾選 ISE Maintenance、關閉 module 鐵蓋並等待 ISE 停止。",
+        );
       if (
         (hardware
           ? d.target === "ISE"
@@ -668,7 +693,7 @@ export function applyCommand(
         return fail("探針未復位鎖緊就執行 DIAG", "探針未鎖定在安裝位置。");
       s.diag = d.target;
       const valid =
-        d.unit && (d.target === "mix" ? d.count === 1 : d.count >= 3);
+        d.target === "mix" ? d.unit && d.count === 1 : validProbeDiag(d);
       state.ledger[d.target === "mix" ? "mixDiag" : `diag-${d.target}`] = valid;
       if (!valid) note("DIAG 次數或 Unit 設定不符合 SOP");
       break;
@@ -681,7 +706,12 @@ export function applyCommand(
         note(`${id} 未執行對應 DIAG 就記錄排水`);
         break;
       }
+      if (v5 && id === "ISE" && !canRunIseProbeDiag(instrument, busy))
+        return fail("ISE 排水紀錄時儀器狀態不允許");
       s.drains[id] = String(value);
+      if (v5 && id === "ISE")
+        state.ledger.dailyIseDrain =
+          value === "正常" && !!state.ledger["diag-ISE"];
       if (value === "異常") note(`${id} 排水異常`);
       break;
     case "mix-result":
@@ -707,7 +737,16 @@ export function applyCommand(
       )
         return fail("無效瓶槽操作");
       out.label = `${slotById[id].label} ${value} ${data.fluid || ""}`;
-      if (!(slotById[id].module === "ise" ? iseAccess() : physical()))
+      if (
+        (hardware &&
+          !canHandleBottle(
+            instrument,
+            slotById[id].module,
+            busy,
+            !revisedWorkstation,
+          )) ||
+        (!hardware && !physical())
+      )
         return fail(
           "瓶槽操作時儀器狀態不允許",
           "主蓋、保養模式或運轉狀態不允許換瓶。",
@@ -1059,6 +1098,7 @@ export function applyCommand(
         out.label = r ? `${r.name} ${r.side} 更換試劑` : "更換試劑";
         if (!r || value !== "replace") return fail("無效試劑操作");
         if (busy) return fail("運轉期間更換試劑", "儀器正在運轉。");
+        if (v5 && r.replaced) return fail("試劑已更換，無須重複操作");
         r.replaced = true;
         r.reviewed = true;
         r.remaining = 500;
@@ -1103,6 +1143,10 @@ export function applyCommand(
           note("Reagent Check 前十二瓶洗滌液尚未逐瓶補滿或種類不符");
           break;
         }
+        if (v5 && !s.reagents.every(reagentReady)) {
+          note("All positions 執行時十一瓶必換試劑尚未就緒");
+          break;
+        }
         for (const r of s.reagents.filter(reagentReady)) {
           r.rb = "expired";
           if (r.cal !== "na") r.cal = "expired";
@@ -1125,6 +1169,26 @@ export function applyCommand(
       }
       s.reagentChecked = true;
       break;
+    case "rack-qc-entry": {
+      out.label = "Serum／Urine QC Entry";
+      if (
+        !["Serum", "Urine"].every(
+          (t) =>
+            Array.isArray(data[t]) &&
+            (data[t] as unknown[]).every(
+              (x) => typeof x === "string" && tests.includes(x),
+            ),
+        )
+      )
+        return fail("無效 QC 合併登記");
+      if (revisedDaily && !dailyExamReadiness(state, version).rackReady) {
+        note("其他日保養項目尚未全部完成就執行 Rack Requisition");
+        break;
+      }
+      for (const t of ["Serum", "Urine"])
+        s.rack[t] = { ...s.rack[t], qc: [...new Set(data[t] as string[])] };
+      break;
+    }
     case "rack": {
       out.label = `${id} Rack Requisition Entry`;
       if (revisedDaily && !dailyExamReadiness(state, version).rackReady) {
@@ -1201,7 +1265,7 @@ export function applyCommand(
   return out;
 }
 
-function dailyExamReadiness(state: EngineState, version: string) {
+export function dailyExamReadiness(state: EngineState, version: string) {
   const s = state.sim,
     revised = version !== rubricVersion;
   const base = dailyReadiness({
@@ -1217,6 +1281,8 @@ function dailyExamReadiness(state: EngineState, version: string) {
       ),
     ),
     cleanCup: s.cup,
+    iseDrainRequired: hasDailyIseDrain(version),
+    iseDrainValid: s.drains.ISE === "正常" && !!state.ledger.dailyIseDrain,
     reagentReady: hasModernDaily(version)
       ? s.reagents.every(reagentReady)
       : s.reagents.every(
@@ -1227,7 +1293,7 @@ function dailyExamReadiness(state: EngineState, version: string) {
             r.remaining >= r.need,
         ),
   });
-  if (version !== dailyRubricVersion || !s.dailyTasks) return base;
+  if (!hasDailyTasks(version) || !s.dailyTasks) return base;
   const extra = tasksReadiness(s.dailyTasks, s.bottles);
   return {
     ...base,
@@ -1239,14 +1305,12 @@ function dailyExamReadiness(state: EngineState, version: string) {
   };
 }
 
-export function scoreAttempt(
+export function attemptChecks(
   kind: ExamKind,
   state: EngineState,
   events: ExamEvent[],
-  startedAt: number,
-  submittedAt: number,
   version = versionForKind(kind),
-): ExamResult {
+): ScoreGroup[] {
   const s = state.sim,
     groups: ScoreGroup[] = [];
   const group = (id: string, label: string, items: CheckItem[]) =>
@@ -1278,6 +1342,16 @@ export function scoreAttempt(
       ),
     );
     group("inspect", "排水與攪拌檢查", [
+      ...(hasDailyIseDrain(version)
+        ? [
+            item(
+              "drain-ISE",
+              "ISE probe 排水正常紀錄",
+              s.drains.ISE === "正常" && !!state.ledger.dailyIseDrain,
+              true,
+            ),
+          ]
+        : []),
       ...dailyProbes.map((id) =>
         item(
           `drain-${id}`,
@@ -1342,7 +1416,7 @@ export function scoreAttempt(
       ),
       item("all", "All positions 檢查", s.reagentChecked),
     ]);
-    if (version === dailyRubricVersion && s.dailyTasks) {
+    if (hasDailyTasks(version) && s.dailyTasks) {
       const tasks = s.dailyTasks;
       group(
         "supplies",
@@ -1561,6 +1635,31 @@ export function scoreAttempt(
       ),
     ]);
   }
+  return groups;
+}
+export function attemptProgress(
+  kind: ExamKind,
+  state: EngineState,
+  events: ExamEvent[],
+  version = versionForKind(kind),
+) {
+  const groups = attemptChecks(kind, state, events, version);
+  return {
+    completedGroups: groups.filter((g) => g.items.every((x) => x.completed))
+      .length,
+    totalGroups: groups.length,
+  };
+}
+export function scoreAttempt(
+  kind: ExamKind,
+  state: EngineState,
+  events: ExamEvent[],
+  startedAt: number,
+  submittedAt: number,
+  version = versionForKind(kind),
+): ExamResult {
+  const s = state.sim,
+    groups = attemptChecks(kind, state, events, version);
   if (hasModernDaily(version))
     for (const g of groups)
       for (const x of g.items)
@@ -1601,7 +1700,7 @@ export function scoreAttempt(
           next.accepted &&
           next.command.type === e.command.type &&
           next.command.target === e.command.target &&
-          (version !== dailyRubricVersion ||
+          (!hasDailyTasks(version) ||
             e.command.type !== "daily-syringe" ||
             next.command.data?.finding === e.command.data?.finding) &&
           (!hasModernDaily(version) ||
@@ -1725,13 +1824,15 @@ export function diagnoseCheck(
         "三瓶須分別執行液量檢查；Standard、Buffer 不足時須更換。更換操作不代替液量檢查。",
     };
   if (id.startsWith("prime-") || ["serum", "urine", "calReview"].includes(id)) {
-    const reset = [...events].reverse().find(
-      (e) =>
-        e.accepted &&
-        !e.error &&
-        e.command.type === "ise-reagent" &&
-        e.command.value === "replace",
-    );
+    const reset = [...events]
+      .reverse()
+      .find(
+        (e) =>
+          e.accepted &&
+          !e.error &&
+          e.command.type === "ise-reagent" &&
+          e.command.value === "replace",
+      );
     if (reset && events.indexOf(reset) > events.indexOf(last))
       return {
         status: "配置變更後須重做",

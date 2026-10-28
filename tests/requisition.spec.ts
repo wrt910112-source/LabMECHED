@@ -1,3 +1,4 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
 import { stabilityWarning } from "../src/requisitionData";
 test("reagent stability threshold and rack calibration/QC draft and entry lifecycle", async ({
@@ -10,7 +11,7 @@ test("reagent stability threshold and rack calibration/QC draft and entry lifecy
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await page.getByTestId("part-console").click();
+  await selectPart(page,"console");
   const screen = page.locator(".workstation");
   const b = (n: string) => screen.getByRole("button", { name: n, exact: true });
   const home = async (n: string) => {

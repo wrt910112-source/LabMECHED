@@ -9,7 +9,7 @@ export default function EnclosurePanel({
   onToggle: (id: DoorId) => void;
 }) {
   const rows: Array<[DoorId, string]> = loader
-    ? [["loader-door", "Clean Solution 櫃門"]]
+    ? [["loader-door", "Wash Solution 櫃門"]]
     : [
         ["ise-top", "上層探針黑色罩（前蓋）"],
         ["ise-top-rear", "上層探針黑色罩（後蓋）"],
@@ -34,7 +34,7 @@ export default function EnclosurePanel({
       </div>
       <p className="mode-note">
         {loader
-          ? "Clean Solution 桶固定放置於托盤；容量與管路為照片外觀示意。"
+          ? "Wash Solution 桶固定放置於托盤；容量與管路為照片外觀示意。"
           : "中層左瓶為 Mid Standard，右瓶為 Buffer；Reference 放在下層。三層可獨立開關。"}
       </p>
     </section>

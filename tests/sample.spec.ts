@@ -1,3 +1,4 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
 
 test("sample bottles and W2 interlock; mixer counts and sides", async ({
@@ -25,12 +26,12 @@ test("sample bottles and W2 interlock; mixer counts and sides", async ({
     { rods: 6, holes: 6, x: 1.115 },
     { rods: 12, holes: 12, x: 0.426 },
   ]);
-  await page.getByTestId("part-mixing").click();
+  await selectPart(page,"mixing",true);
   await page.waitForTimeout(1000);
   await page.screenshot({
     path: `test-results/${info.project.name}-mixing.png`,
   });
-  await page.getByTestId("part-sample").click();
+  await selectPart(page,"sample",true);
   await expect(page.locator(".wash-slot strong")).toHaveText([
     "63.DET-1/W2",
     "64.DET-2",

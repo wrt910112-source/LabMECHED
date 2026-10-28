@@ -1,3 +1,6 @@
+import { AnalyzerStatusSurface } from "./AnalyzerStatusSurface";
+import { MaintenanceSurface } from "./MaintenanceSurface";
+import { IseDrainWorkspace } from "./IseDrainWorkspace";
 import { DailyTasksPanel } from "./DailyTasksPanel";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -13,12 +16,8 @@ import {
   maintenancePages,
   analyzerTabs,
   iseTabs,
-  analyzerActions,
-  iseActions,
   analyzerFooter,
   iseFooter,
-  analyzerRows,
-  iseRows,
 } from "./workstationData";
 import "./workstation.css";
 import {
@@ -36,8 +35,12 @@ import type { Daily } from "./DailyTraining";
 
 export default function Workstation({
   open,
+  active = true,
   onExit,
   dailyRequest = 0,
+  requestedRoute = "",
+  guidance,
+  guideControls = [],
   daily,
   onModel,
   weekly,
@@ -48,8 +51,12 @@ export default function Workstation({
   bottles: BottleStates;
   onWeeklyModel: (id: string) => void;
   open: boolean;
+  active?: boolean;
   onExit: () => void;
   dailyRequest?: number;
+  requestedRoute?: string;
+  guidance?: string;
+  guideControls?: string[];
   daily: Daily;
   onModel: (area: "probes" | "cups") => void;
 }) {
@@ -63,23 +70,46 @@ export default function Workstation({
     [message, setMessage] = useState("");
   const [checks, setChecks] = useState({ bath: false, coolant: false }),
     [maintenance, setMaintenance] = useState({ analyzer: false, ise: false });
-  const [selected, setSelected] = useState<Record<string, number>>({}),
-    [pending, setPending] = useState(false),
-    [soon, setSoon] = useState(false);
+  const [program, setProgram] = useState("");
   useEffect(() => {
-    if (dailyRequest > 0) setPage("日保養");
-  }, [dailyRequest]);
+    if (dailyRequest > 0) setPage(requestedRoute || "日保養");
+  }, [dailyRequest, requestedRoute]);
   useEffect(() => {
     if (open && !dialog.current?.open) dialog.current?.showModal();
     else if (!open && dialog.current?.open) dialog.current.close();
   }, [open]);
+  useEffect(() => {
+    const elements = [
+      ...(dialog.current?.querySelectorAll<HTMLElement>("button,input") || []),
+    ];
+    const marked: HTMLElement[] = [];
+    for (const el of elements) {
+      const label =
+        el instanceof HTMLInputElement
+          ? el.closest("label")?.textContent?.trim()
+          : el.textContent?.trim();
+      if (
+        open &&
+        guidance &&
+        label &&
+        guideControls.includes(
+          el instanceof HTMLInputElement ? `input:${label}` : label,
+        ) &&
+        !(el as HTMLButtonElement).disabled
+      ) {
+        el.classList.add("hud-control-target");
+        marked.push(el);
+      }
+    }
+    return () =>
+      marked.forEach((el) => el.classList.remove("hud-control-target"));
+  });
   function navigate(next: string) {
     setW2Open(false);
     setPage(next);
     setTab("Maintenance");
     setMessage("");
-    setPending(false);
-    setSoon(false);
+    setProgram("");
   }
   const isIse = page === "ISE Maintenance",
     isMaintenance = page === "Analyzer Maintenance" || isIse;
@@ -88,6 +118,24 @@ export default function Workstation({
       `已選取 ${name}。此版建立選單入口，詳細操作流程尚未加入；未執行儀器動作。`,
     );
   function perform(name: string) {
+    if (
+      !weekly &&
+      daily.active &&
+      name === "Cleaning Probe" &&
+      daily.wipeAccessible
+    )
+      setProgram("Wipe");
+    if (!weekly && daily.active && name === "Replace Sample Probe" && isIse) {
+      setProgram("ISE DIAG");
+      return;
+    }
+    if (
+      !weekly &&
+      daily.active &&
+      name === "Inspect Probe & Mixing Bar" &&
+      daily.canInspect
+    )
+      setProgram("Inspect");
     if (weekly) {
       if (name === "Replace Sample Probe" || name === "Replace Mix Bar") {
         weekly.setView(name === "Replace Mix Bar" ? "攪拌棒" : "探針");
@@ -116,30 +164,99 @@ export default function Workstation({
       ? daily.instrument.iseMaintenance
       : maintenance.ise;
   const iseBusy = weekly ? weekly.busy : false;
-  const rows = isIse ? iseRows : analyzerRows;
+
   return (
     <dialog
       ref={dialog}
-      className="workstation"
+      className={active ? "workstation" : "workstation-retained"}
       aria-label="AU5800 操作工作站"
       onCancel={(e) => {
         e.preventDefault();
+        if (
+          document.activeElement instanceof HTMLInputElement ||
+          document.activeElement instanceof HTMLTextAreaElement ||
+          document.activeElement instanceof HTMLSelectElement
+        ) {
+          (document.activeElement as HTMLElement).blur();
+          return;
+        }
+        if (program) {
+          setProgram("");
+          return;
+        }
+        if (w2Open) {
+          setW2Open(false);
+          return;
+        }
         onExit();
       }}
       onClose={onExit}
     >
+      <div className="ws-session-hud">
+        <span>
+          {weekly
+            ? "周保養練習"
+            : daily.active
+              ? `日保養 ${daily.completed.filter(Boolean).length}／12`
+              : "自由探索"}
+        </span>
+        {guidance && <span className="ws-session-target">{guidance}</span>}
+        {!weekly && daily.active && (
+          <details className="ws-instrument-hud">
+            <summary>儀器狀態</summary>
+            <DailyInstrumentControls
+              d={daily}
+              modes={!(isMaintenance && tab === "Maintenance")}
+            />
+          </details>
+        )}
+        {weekly && (
+          <details className="ws-instrument-hud">
+            <summary>儀器狀態</summary>
+            <fieldset
+              className="daily-inline daily-instrument"
+              disabled={weekly.busy}
+            >
+              <legend>儀器狀態</legend>
+              {[
+                ["主蓋開啟", weekly.lid, weekly.setLid],
+                ["ISE 上蓋開啟", weekly.iseTop, weekly.setIseTop],
+                ["ISE module 蓋開啟", weekly.iseModule, weekly.setIseModule],
+                ...(!(isMaintenance && tab === "Maintenance")
+                  ? [
+                      [
+                        "Analyzer Maintenance",
+                        weekly.maintenance,
+                        weekly.setMaintenance,
+                      ],
+                      [
+                        "ISE Maintenance",
+                        weekly.iseMaintenance,
+                        weekly.setIseMaintenance,
+                      ],
+                    ]
+                  : []),
+              ].map(([label, value, change]) => (
+                <label key={label as string}>
+                  <input
+                    type="checkbox"
+                    checked={value as boolean}
+                    onChange={(e) =>
+                      (change as (v: boolean) => void)(e.target.checked)
+                    }
+                  />
+                  {label as string}
+                </label>
+              ))}
+            </fieldset>
+          </details>
+        )}
+      </div>
       <header className="ws-toolbar">
         <strong>
           AU5800 <span>操作工作站</span>
         </strong>
         <span className="ws-simulation">教學模擬 · 未連接實機</span>
-        <span className="daily-progress">
-          {weekly
-            ? `周保養 · ${weekly.complete ? "已完成" : weekly.view}`
-            : daily.active
-              ? `日保養 ${daily.completed.filter(Boolean).length}／${daily.completed.length}`
-              : ""}
-        </span>
         <button
           className="daily-nav"
           onClick={() => navigate(weekly ? "周保養" : "日保養")}
@@ -157,6 +274,9 @@ export default function Workstation({
           </button>
         )}
         <button onClick={() => navigate("Home")}>Home 主選單</button>
+        {!weekly && daily.active && isIse && (
+          <button onClick={() => setProgram("Cups")}>試劑杯準備</button>
+        )}
         <button className="ws-exit" onClick={onExit}>
           退出螢幕 ×
         </button>
@@ -165,9 +285,6 @@ export default function Workstation({
         <span>{isMaintenance ? "Maintenance" : page}</span>
         <b>{isMaintenance ? "User Maintenance" : "AU5800"}</b>
       </div>
-      {!weekly && daily.active && page !== "日保養補充與檢查" && (
-        <DailyInstrumentControls d={daily} modes={false} />
-      )}
       {weekly && page === "周保養" ? (
         <WeeklyOverview w={weekly} go={navigate} onModel={onWeeklyModel} />
       ) : page === "日保養" ? (
@@ -187,7 +304,6 @@ export default function Workstation({
         <StartCondition d={daily} />
       ) : page === "日保養補充與檢查" ? (
         <>
-          <DailyInstrumentControls d={daily} />
           <DailyTasksPanel
             tasks={daily.tasks}
             instrument={daily.instrument}
@@ -208,6 +324,12 @@ export default function Workstation({
           d={daily}
           notify={setMessage}
           canStart={!daily.active || daily.rackReady}
+          calibrationNeeds={
+            daily.active && daily.reagentChecked
+              ? daily.calibrationNeeds
+              : undefined
+          }
+          autoCalibration={daily.active && daily.reagentChecked}
         />
       ) : page === "Home" ? (
         <>
@@ -249,50 +371,7 @@ export default function Workstation({
         </>
       ) : page === "Analyzer Status" ? (
         <>
-          <div className="ws-analyzer-status">
-            <div className="ws-status-schematic" aria-label="儀器狀態配置示意">
-              <div className="ws-track">Sample transport</div>
-              <div className="ws-loader">
-                Rack Loader
-                <br />
-                <span>⇄</span>
-                <div>Master Wash Solution</div>
-              </div>
-              <div className="ws-ise-column">
-                ISE
-                {["REF", "MID", "BUF"].map((n) => (
-                  <span key={n}>{n} ●</span>
-                ))}
-              </div>
-              <div className="ws-analysis">
-                <div className="ws-incubator">Incubator</div>
-                <div className="ws-discs">
-                  <span>R2</span>
-                  <span>R1</span>
-                </div>
-                <div className="ws-temps">
-                  <div>
-                    Bath Temp. <output>37.0</output> °C
-                  </div>
-                  <div>
-                    Coolant Temp. <output>8.2</output> °C
-                  </div>
-                  <small>照片數值示意，非即時量測或合格範圍</small>
-                </div>
-                <div className="ws-fluid-grid">
-                  {[
-                    "D.I. Water",
-                    "Diluted Wash Sol.",
-                    "Conc. Waste",
-                    "Vacuum Tank",
-                    "Wash Solution",
-                    "Waste",
-                  ].map((n) => (
-                    <span key={n}>{n}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <AnalyzerStatusSurface>
             <section className="ws-checks">
               <span className="ws-kicker">每次保養檢查</span>
               <h2>確認兩項溫度</h2>
@@ -332,7 +411,7 @@ export default function Workstation({
               </small>
               <TemperatureRecord d={daily} />
             </section>
-          </div>
+          </AnalyzerStatusSurface>
           <nav className="ws-footer">
             <button onClick={() => notice("Rack Data")}>Rack Data</button>
           </nav>
@@ -371,193 +450,65 @@ export default function Workstation({
                 ))}
               </nav>
               {tab === "Maintenance" ? (
-                <div className="ws-maintenance-body">
-                  <section className="ws-maintenance-list">
-                    {!weekly && daily.active && (
-                      <button
-                        onClick={() => onModel(isIse ? "cups" : "probes")}
-                      >
-                        前往 3D 模型操作{isIse ? "試劑杯" : "探針與攪拌單元"}
-                      </button>
-                    )}
-                    {!weekly && daily.active && (
-                      <div
-                        className="daily-scroll"
-                        style={{ maxHeight: "55%", flexShrink: 0 }}
-                      >
-                        {isIse ? (
-                          <IsePreparation d={daily} />
-                        ) : (
+                <MaintenanceSurface
+                  ise={isIse}
+                  enabled={
+                    isIse
+                      ? iseEnabled
+                      : weekly
+                        ? weekly.maintenance
+                        : daily.active
+                          ? daily.instrument.analyzerMaintenance
+                          : maintenance.analyzer
+                  }
+                  busy={iseBusy}
+                  blocked={
+                    !weekly && daily.active && daily.instrument.iseModule
+                  }
+                  cleaningBlocked={
+                    !weekly && daily.active && daily.instrument.iseModule
+                  }
+                  toggle={(value) =>
+                    weekly
+                      ? isIse
+                        ? weekly.setIseMaintenance(value)
+                        : weekly.setMaintenance(value)
+                      : daily.active
+                        ? daily.setInstrument((v) => ({
+                            ...v,
+                            [isIse ? "iseMaintenance" : "analyzerMaintenance"]:
+                              value,
+                          }))
+                        : setMaintenance((v) => ({
+                            ...v,
+                            [isIse ? "ise" : "analyzer"]: value,
+                          }))
+                  }
+                  perform={perform}
+                  update={() => notice("Update")}
+                  workspace={
+                    program === "Inspect" || program === "Wipe" ? (
+                      <div className="ws-inline-program">
+                        <header>
+                          <strong>
+                            {program === "Wipe"
+                              ? "Cleaning Probe"
+                              : "Inspect Probe & Mixing Bar"}
+                          </strong>
+                          <button onClick={() => setProgram("")}>
+                            關閉子工作區
+                          </button>
+                        </header>
+                        <div className="ws-program-content">
                           <ProbePractice d={daily} />
-                        )}
+                          <button onClick={() => onModel("probes")}>
+                            前往 3D 模型觀察
+                          </button>
+                        </div>
                       </div>
-                    )}
-                    <div className="ws-filters">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={pending}
-                          onChange={(e) => setPending(e.target.checked)}
-                        />
-                        Display Pending Items Only
-                      </label>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={soon}
-                          onChange={(e) => setSoon(e.target.checked)}
-                        />
-                        Procedures Due Soon
-                      </label>
-                    </div>
-                    <div className="ws-table-scroll">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>No.</th>
-                            <th>Maintenance</th>
-                            <th>Pending</th>
-                            <th>Performed</th>
-                            <th>Frequency</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pending || soon ? (
-                            <tr>
-                              <td colSpan={5}>
-                                尚無待執行或即將到期的模擬紀錄。
-                              </td>
-                            </tr>
-                          ) : (
-                            rows.map(([name, freq], i) => (
-                              <tr
-                                key={name}
-                                className={
-                                  selected[page] === i ? "selected" : ""
-                                }
-                              >
-                                <td>{i + 1}</td>
-                                <td>
-                                  <button
-                                    onClick={() =>
-                                      setSelected({ ...selected, [page]: i })
-                                    }
-                                  >
-                                    {name}
-                                  </button>
-                                </td>
-                                <td>—</td>
-                                <td>—</td>
-                                <td>{freq}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    <small>
-                      項目與頻率依照片呈現；未載入保養日期及執行紀錄。
-                    </small>
-                  </section>
-                  <aside className="ws-actions" aria-label={`${page} 操作按鈕`}>
-                    <button
-                      className="ws-update"
-                      onClick={() => notice("Update")}
-                    >
-                      Update
-                    </button>
-                    <label className="ws-enable">
-                      <input
-                        type="checkbox"
-                        checked={
-                          weekly
-                            ? isIse
-                              ? weekly.iseMaintenance
-                              : weekly.maintenance
-                            : daily.active
-                              ? isIse
-                                ? daily.instrument.iseMaintenance
-                                : daily.instrument.analyzerMaintenance
-                              : isIse
-                                ? maintenance.ise
-                                : maintenance.analyzer
-                        }
-                        onChange={(e) =>
-                          weekly
-                            ? isIse
-                              ? weekly.setIseMaintenance(e.target.checked)
-                              : weekly.setMaintenance(e.target.checked)
-                            : daily.active
-                              ? daily.setInstrument((s) => ({
-                                  ...s,
-                                  [isIse
-                                    ? "iseMaintenance"
-                                    : "analyzerMaintenance"]: e.target.checked,
-                                }))
-                              : setMaintenance({
-                                  ...maintenance,
-                                  [isIse ? "ise" : "analyzer"]:
-                                    e.target.checked,
-                                })
-                        }
-                      />
-                      {page}
-                    </label>
-                    <div className="ws-action-grid">
-                      {(isIse ? iseActions : analyzerActions).flatMap(
-                        (row, i) =>
-                          row.map((name, j) =>
-                            name ? (
-                              <button
-                                key={`${i}-${j}`}
-                                disabled={
-                                  isIse &&
-                                  (!iseEnabled ||
-                                    iseBusy ||
-                                    (!weekly &&
-                                      daily.active &&
-                                      daily.instrument.iseModule))
-                                }
-                                onClick={() => perform(name)}
-                              >
-                                {name}
-                              </button>
-                            ) : (
-                              <span key={`${i}-${j}`} aria-hidden="true" />
-                            ),
-                          ),
-                      )}
-                    </div>
-                    {isIse && (
-                      <div className="daily-cleaning-buttons">
-                        <button
-                          disabled={
-                            iseEnabled ||
-                            iseBusy ||
-                            (!weekly &&
-                              daily.active &&
-                              daily.instrument.iseModule)
-                          }
-                          onClick={() => perform("Cleaning")}
-                        >
-                          Cleaning
-                        </button>
-                        <button
-                          disabled={
-                            iseEnabled ||
-                            iseBusy ||
-                            (!weekly &&
-                              daily.active &&
-                              daily.instrument.iseModule)
-                          }
-                          onClick={() => perform("Cleaning (Enhanced)")}
-                        >
-                          Cleaning (Enhanced)
-                        </button>
-                      </div>
-                    )}
-                  </aside>
-                </div>
+                    ) : undefined
+                  }
+                />
               ) : weekly && tab === "Photocal Monitor" ? (
                 <div className="weekly-panel">
                   <Photocal w={weekly} />
@@ -603,6 +554,51 @@ export default function Workstation({
           <h2>{page}</h2>
           <p>已建立選單入口，詳細畫面尚未加入。</p>
           <button onClick={() => navigate("Home")}>返回主選單</button>
+        </div>
+      )}
+      {program && !["Inspect", "Wipe"].includes(program) && (
+        <div
+          className="ws-program-dialog"
+          role="dialog"
+          aria-label={
+            program === "ISE DIAG"
+              ? "DIAG 設定"
+              : program === "Cups"
+                ? "ISE 試劑杯準備"
+                : "Inspect Probe & Mixing Bar"
+          }
+        >
+          <header>
+            <strong>
+              {program === "ISE DIAG"
+                ? "Replace Sample Probe · ISE"
+                : program === "Cups"
+                  ? "ISE 試劑杯準備"
+                  : "Inspect Probe & Mixing Bar"}
+            </strong>
+            <button onClick={() => setProgram("")}>關閉子工作區</button>
+          </header>
+          {program === "ISE DIAG" ? (
+            <IseDrainWorkspace
+              d={daily}
+              notify={setMessage}
+              onModel={() => onWeeklyModel("ISE")}
+            />
+          ) : program === "Cups" ? (
+            <div className="ws-program-content">
+              <IsePreparation d={daily} />
+              <button onClick={() => onModel("cups")}>
+                前往 3D 模型操作試劑杯
+              </button>
+            </div>
+          ) : (
+            <div className="ws-program-content">
+              <ProbePractice d={daily} />
+              <button onClick={() => onModel("probes")}>
+                前往 3D 模型觀察
+              </button>
+            </div>
+          )}
         </div>
       )}
       {weekly && w2Open && (

@@ -1,3 +1,4 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
 test("ISE hinged cover, four named cups and five independently removable components", async ({
   page,
@@ -48,7 +49,7 @@ test("ISE hinged cover, four named cups and five independently removable compone
   expect(model.closedAngle).toBeCloseTo(0, 3);
   expect(model.returned).toBeCloseTo(0, 3);
   expect(model.removable).toHaveLength(5);
-  await page.getByTestId("part-ise").click();
+  await selectPart(page,"ise");
   await page.waitForTimeout(1100);
   await page.screenshot({
     path: `test-results/${info.project.name}-ise-closed.png`,
@@ -67,7 +68,7 @@ test("ISE hinged cover, four named cups and five independently removable compone
     "ise-plug-b",
     "ise-motor",
   ]) {
-    await page.getByTestId(`part-${id}`).click();
+    await selectPart(page,id);
     await expect(page.locator(".viewer-host")).toHaveAttribute(
       "data-selected",
       id,
@@ -92,7 +93,7 @@ test("ISE hinged cover, four named cups and five independently removable compone
   await expect(
     page.getByRole("button", { name: "拆下選定部件", exact: true }),
   ).toBeDisabled();
-  await page.getByTestId("part-ise-cups").click();
+  await selectPart(page,"ise-cups");
   await expect(page.locator(".ise-cup-table th")).toHaveText([
     "S-H",
     "S-L",

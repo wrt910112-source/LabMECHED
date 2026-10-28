@@ -13,6 +13,8 @@ export function dailyDependencies(
 }
 
 export interface DailyRuleState {
+  iseDrainRequired?: boolean;
+  iseDrainValid?: boolean;
   temp: { saved: boolean };
   index: string;
   wiped: readonly string[];
@@ -35,7 +37,8 @@ export function dailyReadiness(s: DailyRuleState) {
     dependencies.canInspect,
     dependencies.canInspect &&
       dailyProbes.every((id) => s.drains[id] === "正常") &&
-      ["左側", "右側"].every((id) => s.mix[id] === "正常"),
+      ["左側", "右側"].every((id) => s.mix[id] === "正常") &&
+      (!s.iseDrainRequired || !!s.iseDrainValid),
     s.cleaned,
     dependencies.canCalibrate,
     dependencies.canCalibrate &&

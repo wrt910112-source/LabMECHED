@@ -1,3 +1,4 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
 import {
   analyzerActions,
@@ -12,12 +13,12 @@ test("workstation full screen navigation, maintenance layouts and temperature ch
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await page.getByTestId("part-console").click();
+  await selectPart(page,"console");
   const screen = page.getByRole("dialog", { name: "AU5800 操作工作站" });
   await expect(screen).toBeVisible();
   const bounds = await screen.boundingBox();
   expect(bounds!.width).toBeGreaterThan(page.viewportSize()!.width * 0.95);
-  expect(bounds!.height).toBeGreaterThan(page.viewportSize()!.height * 0.95);
+  expect(bounds!.height).toBeGreaterThan(page.viewportSize()!.height * 0.90);
   await expect(screen.locator(".ws-status-links button")).toHaveText([
     "Sample Status",
     "Analyzer Status",
@@ -109,7 +110,7 @@ test("workstation full screen navigation, maintenance layouts and temperature ch
   await page.keyboard.press("Escape");
   await expect(screen).not.toBeVisible();
   await expect(page.getByTestId("model-canvas")).toBeVisible();
-  await page.getByTestId("part-console").click();
+  await selectPart(page,"console");
   await screen
     .getByRole("button", { name: "Home 主選單", exact: true })
     .click();

@@ -1,4 +1,6 @@
 export type Vec3 = [number, number, number];
+import { partPhotoFiles } from "./realPhotos";
+
 export type PartId =
   | "rear-syringes"
   | "ise-internal"
@@ -107,8 +109,8 @@ export const parts: Part[] = [
     photo: "ise-reagents.jpg",
     extraPhotos: ["ise-reference.jpg"],
     pages: "27、29",
-    target: [0.015, 0.66, 0.78],
-    eye: [-0.35, 1.05, 1.75],
+    target: [0.015, 0.66, 0.53],
+    eye: [-0.35, 1.05, 1.5],
     internal: true,
     tags: ["MID · 黃", "BUFFER · 紅", "REF · 藍"],
   },
@@ -321,16 +323,16 @@ parts.push(
   {
     id: "clean-solution",
     parent: "loader",
-    name: "Clean Solution 櫃",
-    en: "Clean solution cabinet",
+    name: "Wash Solution 櫃",
+    en: "Wash solution cabinet",
     number: "20",
     description:
-      "樣品架進架區下方較窄的櫃體，右側鉸鏈門內放置 Clean Solution 桶。可開門查看桶身、提把、雙蓋、管線與承接托盤。",
+      "樣品架進架區下方較窄的櫃體，右側鉸鏈門內放置 Wash Solution 桶。可開門查看桶身、提把、雙蓋、管線與承接托盤。",
     photo: "exterior.jpg",
     pages: "依補充照片；頁碼待核對",
-    target: [-0.682, 0.43, 0.43],
+    target: [-0.735, 0.43, 0.43],
     eye: [-0.89, 0.9, 1.95],
-    tags: ["Clean Solution", "可開門"],
+    tags: ["Wash Solution", "可開門"],
   },
   {
     id: "sample-track",
@@ -378,6 +380,14 @@ parts.push(
     tags: ["馬達", "管線"],
   },
 );
+// Replace legacy aliases with the original supplied filenames for these parts.
+for (const part of parts) {
+  const photos = partPhotoFiles[part.id];
+  if (photos) {
+    part.photo = photos[0];
+    part.extraPhotos = photos.slice(1);
+  }
+}
 export const partById = Object.fromEntries(
   parts.map((p) => [p.id, p]),
 ) as Record<PartId, Part>;

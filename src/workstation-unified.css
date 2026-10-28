@@ -1,0 +1,295 @@
+/* Full-size instrument software; game state lives outside the program workspace. */
+.simulator-shell .exam-workstation-overlay {
+  inset: 12px;
+  overflow: hidden;
+  z-index: 40;
+}
+.simulator-shell .exam-workstation-overlay .exam-workstation {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  margin: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font:
+    15px Arial,
+    "Microsoft JhengHei",
+    sans-serif;
+}
+.simulator-shell .exam-workstation-overlay .ws-title {
+  position: static;
+  justify-content: space-between;
+  margin: 0;
+  gap: 0;
+  padding: 8px 20px;
+  background: linear-gradient(100deg, #c9d7dd 32%, #627c9a 32%);
+  color: #23313c;
+}
+.simulator-shell .exam-workstation .ws-title b {
+  margin: 0;
+}
+.simulator-shell .exam-workstation .ws-home {
+  height: auto;
+  min-height: 0;
+}
+.simulator-shell .exam-workstation .ws-home img {
+  max-height: none;
+}
+.simulator-shell .exam-workstation .exam-native-rack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+:is(.workstation, .workstation-software)
+  > :is(
+    .ws-primary-tabs,
+    .ws-tabs,
+    .ws-toolbar,
+    .ws-title,
+    .ws-footer,
+    .ws-message
+  ) {
+  flex-shrink: 0;
+}
+.ws-session-hud {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 4px 12px;
+  background: #172e3a;
+  color: #d4e9f0;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.ws-session-target {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+.ws-session-hud > span:nth-child(2) {
+  margin-right: auto;
+}
+:is(.workstation, .simulator-shell .workstation-software)
+  .ws-session-hud
+  button {
+  font-size: 12px;
+  min-height: 26px;
+  padding: 3px 9px;
+  background: #284453;
+  color: #d4e9f0;
+  border-color: #52707c;
+}
+.ws-instrument-hud {
+  margin-left: auto;
+  position: relative;
+  z-index: 30;
+  white-space: nowrap;
+}
+.ws-instrument-hud summary {
+  cursor: pointer;
+  padding: 5px 12px;
+}
+.ws-instrument-hud > fieldset {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: min(720px, 85vw);
+  background: #e4e8ed;
+  color: #23313c;
+  box-shadow: 0 12px 35px #0005;
+  white-space: normal;
+}
+.ws-program-dialog {
+  position: absolute;
+  inset: 150px 18px 65px;
+  display: flex;
+  flex-direction: column;
+  z-index: 18;
+  background: #e4e8ed;
+  border: 2px solid #718c9e;
+  box-shadow: 0 15px 60px #142b4455;
+  min-height: 0;
+}
+.ws-program-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #c9d7dd;
+  flex-shrink: 0;
+}
+.ws-program-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+.ws-program-content > label {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0;
+}
+.ws-program-content > button {
+  margin: 6px;
+}
+:is(.workstation, .workstation-software) :is(.reagent-page, .rack-page) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 20px;
+}
+:is(.workstation, .workstation-software)
+  :is(.reagent-detail-scroll, .rack-scroll) {
+  flex: 1;
+  min-height: 100px;
+  max-height: none;
+  overflow: auto;
+}
+:is(.workstation, .workstation-software)
+  :is(.reagent-controls, .rack-controls, .rack-count, .reagent-note) {
+  flex-shrink: 0;
+}
+:is(.workstation, .workstation-software) .rack-controls {
+  margin: 5px 0 10px;
+}
+:is(.workstation, .workstation-software) .rack-page > p {
+  margin: 5px 0;
+}
+:is(.workstation, .workstation-software) .reagent-page > fieldset {
+  flex-shrink: 0;
+  margin: 8px 0;
+}
+:is(.workstation, .workstation-software) .reagent-main-grid {
+  overflow: auto;
+  min-height: 0;
+}
+:is(.workstation, .workstation-software) .rack-count {
+  padding: 7px;
+}
+:is(.workstation, .workstation-software) .ws-program-content .daily-practice {
+  margin: 0;
+}
+:is(.workstation, .workstation-software) input:not([type="checkbox"]),
+:is(.workstation, .workstation-software) select {
+  background: white;
+  color: #243c49;
+  border: 1px solid #91a3b0;
+  border-radius: 3px;
+  padding: 7px;
+  font: inherit;
+}
+.simulator-shell .exam-workstation :is(.daily-page, .exam-controls) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  color: #23313c;
+}
+.simulator-shell .exam-workstation .exam-machine-dialog .exam-controls {
+  background: #edf1f3;
+}
+.simulator-shell .exam-workstation .exam-machine-dialog :is(input, select) {
+  background: white;
+  color: #243c49;
+}
+.simulator-shell .exam-room :is(.exam-room-toolbar, .exam-save-status)[hidden] {
+  display: none !important;
+}
+.simulator-shell
+  .exam-native-rack
+  :is(.rack-cal th, .rack-cal td, .rack-cal button) {
+  height: 38px;
+}
+@media (max-height: 800px) {
+  :is(.workstation, .workstation-software) .ws-toolbar {
+    padding: 7px 14px;
+    gap: 12px;
+  }
+  :is(.workstation, .workstation-software) .ws-primary-tabs {
+    padding: 9px 16px;
+  }
+  :is(.workstation, .workstation-software) .ws-tabs button {
+    padding: 9px 20px;
+  }
+  :is(.workstation, .workstation-software) .ws-message {
+    padding: 6px 14px;
+    min-height: 30px;
+  }
+  :is(.workstation, .workstation-software) .ws-status-schematic {
+    min-height: 370px;
+  }
+  .ws-program-dialog {
+    inset: 125px 18px 45px;
+  }
+}
+
+.ws-inline-program {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #9aafbd;
+  background: #edf1f3;
+}
+.ws-inline-program > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  background: #c9d7dd;
+  flex-shrink: 0;
+}
+
+/* The simulator HUD must not override the original reagent / rack control geometry. */
+:is(.workstation, .simulator-shell .workstation-software)
+  .rack-cal
+  :is(th, td) {
+  text-align: center;
+  padding: 0;
+  height: 38px;
+}
+:is(.workstation, .simulator-shell .workstation-software) .rack-cal button {
+  height: 38px;
+  min-height: 38px;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: #c9cfd3;
+}
+:is(.workstation, .simulator-shell .workstation-software)
+  .rack-editing
+  .rack-cal
+  button {
+  background: #f1f2ed;
+}
+:is(.workstation, .simulator-shell .workstation-software)
+  .rack-test-grid
+  button {
+  border: 1px solid #a8b4bb;
+  border-radius: 0;
+  min-height: 43px;
+  background: #cbd1d5;
+  color: #253b46;
+}
+:is(.workstation, .simulator-shell .workstation-software)
+  .rack-editing
+  .rack-test-grid
+  button {
+  background: #f1f2ed;
+}
+:is(.workstation, .simulator-shell .workstation-software)
+  .reagent-controls
+  select {
+  width: auto;
+  min-width: 70px;
+}
+:is(.workstation, .simulator-shell .workstation-software) .daily-field input {
+  width: 100px;
+}

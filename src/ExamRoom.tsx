@@ -1,8 +1,23 @@
+import { AnalyzerStatusSurface } from "./AnalyzerStatusSurface";
+import { StartCondition, Calibration, ProbePractice } from "./DailyTraining";
+import { MaintenanceSurface } from "./MaintenanceSurface";
+import {
+  hasDailyIseDrain,
+  hasRevisedWorkstation,
+  canHandleBottle,
+} from "../shared/dailyScenario";
+import { PartInformation } from "./SimulatorHud";
 import { DailyTasksPanel } from "./DailyTasksPanel";
 import { canRunIseProgram } from "../shared/dailyScenario";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Monitor, Box, Plus, Minus, RotateCcw, Flag } from "lucide-react";
-import Viewer, { type CameraRequest } from "./Viewer";
+import Viewer, { type CameraRequest, type SceneSelection } from "./Viewer";
 import { api, ApiError } from "./examApi";
 import {
   kindNames,
@@ -28,22 +43,14 @@ import {
 } from "./detergents";
 import { closedDoors } from "./enclosures";
 import { partById, views, asset, type PartId } from "./data";
-import {
-  analyzerActions,
-  iseActions,
-  analyzerRows,
-  iseRows,
-  analyzerFooter,
-  iseFooter,
-  mainMenu,
-} from "./workstationData";
+import { analyzerFooter, iseFooter, mainMenu } from "./workstationData";
 import RackRequisition from "./RackRequisition";
 import { ExamReagentManagement } from "./ReagentManagement";
 import { calibrationNeeds } from "../shared/dailyScenario";
 import type { WeeklyVisual } from "./weeklyModel";
 
 type Source = "model" | "workstation";
-type Dispatch = (command: ExamCommand, source?: Source) => void;
+type Dispatch = (command: ExamCommand, source?: Source) => Promise<boolean>;
 const cups = ["S-H", "S-L", "U-H", "U-L"];
 function resultSelect(
   label: string,
@@ -105,14 +112,26 @@ export default function ExamRoom({
     [selectedSlot, setSelectedSlot] = useState<string | null>(null),
     [request, setRequest] = useState<CameraRequest>({ ...views[0], serial: 0 }),
     [zoom, setZoom] = useState(0);
+  const [selectedDetail, setSelectedDetail] = useState<SceneSelection | null>(
+    null,
+  );
+  const [panelOpen, setPanelOpen] = useState(true),
+    [infoTab, setInfoTab] = useState<"actions" | "info" | "photo">("actions");
   const [confirm, setConfirm] = useState<"submit" | "abandon" | null>(null),
     [now, setNow] = useState(Date.now());
+  const confirmDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (confirm && !confirmDialog.current?.open)
+      confirmDialog.current?.showModal();
+    else if (!confirm) confirmDialog.current?.close();
+  }, [confirm]);
   const retry = useRef<{
     path: string;
     body: unknown;
     finish?: "submit" | "abandon";
   } | null>(null);
   const [hasRetry, setHasRetry] = useState(false);
+  const [qcSavedVersion, setQcSavedVersion] = useState(0);
   const accept = useCallback(
     (a: Attempt) => {
       current.current = a;
@@ -122,7 +141,7 @@ export default function ExamRoom({
     [onUpdate],
   );
   async function send(requestData: NonNullable<typeof retry.current>) {
-    if (lock.current) return;
+    if (lock.current) return false;
     const before = current.current;
     const command = (requestData.body as { command?: ExamCommand }).command;
     // Reflect checkbox input immediately; the server response remains authoritative.
@@ -154,6 +173,8 @@ export default function ExamRoom({
         sim.photo = !!command.data?.photo;
         sim.enhanced = !!command.data?.enhanced;
       }
+      if (command.type === "cal-review" && sim.cal.serum && sim.cal.urine)
+        sim.cal = { ...sim.cal, checked: true };
       setAttempt({ ...before, sim });
     }
     lock.current = true;
@@ -162,10 +183,11 @@ export default function ExamRoom({
     setMessage("");
     retry.current = requestData;
     try {
-      const response = await api<{ attempt: Attempt; message?: string }>(
-        requestData.path,
-        { method: "POST", body: requestData.body },
-      );
+      const response = await api<{
+        attempt: Attempt;
+        message?: string;
+        applied?: boolean;
+      }>(requestData.path, { method: "POST", body: requestData.body });
       retry.current = null;
       setHasRetry(false);
       setConfirm(null);
@@ -173,8 +195,11 @@ export default function ExamRoom({
       else if (requestData.finish === "submit") onFinished(response.attempt);
       else {
         accept(response.attempt);
+        if (command?.type === "rack-qc-entry" && response.applied !== false)
+          setQcSavedVersion(response.attempt.revision);
         setMessage(response.message || "操作已保存。");
       }
+      return response.applied !== false;
     } catch (error) {
       setAttempt(before);
       current.current = before;
@@ -194,14 +219,15 @@ export default function ExamRoom({
           else onAbandon();
         } catch {}
       }
+      return false;
     } finally {
       lock.current = false;
       setPending(false);
     }
   }
   const dispatch: Dispatch = (command, source = place) => {
-    if (lock.current || retry.current) return;
-    void send({
+    if (lock.current || retry.current) return Promise.resolve(false);
+    return send({
       path: `/attempts/${current.current.id}/events`,
       body: {
         id: crypto.randomUUID(),
@@ -260,6 +286,7 @@ export default function ExamRoom({
       setView("瓶槽");
       setSelectedSlot(id);
       setSelected(slotById[id].module);
+      setSelectedDetail({ partId: slotById[id].module, slotId: id });
       setRequest((r) => ({ ...slotCamera(id), serial: r.serial + 1 }));
       return;
     }
@@ -274,6 +301,7 @@ export default function ExamRoom({
     ) {
       const part = id as PartId;
       setSelected(part);
+      setSelectedDetail({ partId: part });
       setRequest((r) => ({
         eye: partById[part].eye,
         target: partById[part].target,
@@ -302,6 +330,7 @@ export default function ExamRoom({
                     ? "r2"
                     : "overview";
     setSelected(part);
+    setSelectedDetail({ partId: part, weeklyId: id });
     setRequest((r) => ({
       eye: partById[part].eye,
       target: partById[part].target,
@@ -343,6 +372,7 @@ export default function ExamRoom({
     }
     if (id.startsWith("well-")) {
       setTarget(id);
+      setSelectedDetail({ partId: "mixing", weeklyId: id });
       dispatch({ type: "well", target: id }, "model");
       return;
     }
@@ -395,7 +425,7 @@ export default function ExamRoom({
       className="exam-room"
       aria-label={`${kindNames[attempt.kind]}考試`}
     >
-      <header className="exam-room-toolbar">
+      <header className="exam-room-toolbar" hidden={place === "workstation"}>
         <strong>{kindNames[attempt.kind]}測驗</strong>
         <span>
           經過 {Math.floor(elapsed / 60)}:
@@ -433,6 +463,7 @@ export default function ExamRoom({
           className={
             failure ? "exam-error exam-save-status" : "exam-save-status"
           }
+          hidden={place === "workstation"}
           role={failure ? "alert" : "status"}
         >
           {failure || message}
@@ -446,92 +477,196 @@ export default function ExamRoom({
           )}
         </div>
       )}
-      {place === "model" ? (
-        <div className="exam-model-layout">
-          <div className="exam-model-stage model-stage">
-            <Viewer
-              daily={{
-                active: true,
-                mode: s.dailyMode,
-                wiped: s.wiped,
-                cleanCup: s.cup,
-                drops: s.drops,
-              }}
-              weekly={weekly}
-              onWeeklySelect={modelClick}
-              practice={attempt.kind === "daily"}
-              practiceTarget={target}
-              onPracticeSelect={focus}
-              doorState={{
-                ...closedDoors,
-                "ise-top": s.instrument?.iseTop ?? s.lid,
-                "ise-top-rear": s.instrument?.iseTop ?? s.lid,
-                "ise-middle": !!s.instrument?.iseReagents,
-                "ise-bottom": !!s.instrument?.iseReference,
-                "syringe-front": s.dailyTasks
-                  ? !!s.instrument?.frontSyringe
-                  : s.lid,
-                "syringe-rear": !!s.instrument?.rearSyringe,
-              }}
-              iseState={{ open: s.instrument?.iseModule ?? s.lid, removed: [] }}
-              selected={selected}
-              internal={s.instrument?.mainLid ?? s.lid}
-              labels={true}
-              request={request}
-              onSelect={(id) => {
-                if (id === "console") {
-                  setPlace("workstation");
-                  return;
-                }
-                setSelected(id);
-                setRequest((r) => ({
-                  eye: partById[id].eye,
-                  target: partById[id].target,
-                  serial: r.serial + 1,
-                }));
-              }}
-              zoom={zoom}
-              onReady={() => {}}
-              onError={() => {}}
-              bottles={s.bottles}
-              selectedSlot={selectedSlot}
-              onSlot={focus}
-            />
-            <div className="exam-view-tools">
-              {views.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => {
-                    setSelected("overview");
-                    setRequest((r) => ({ ...v, serial: r.serial + 1 }));
-                  }}
-                >
-                  {v.label}
-                </button>
-              ))}
+      <section
+        className="exam-quest-summary hud-card"
+        aria-label="考試目標與進度"
+      >
+        <strong>考試模式 · {kindNames[attempt.kind]}</strong>
+        <p>完成本次儀器保養與必要登記。</p>
+        <span>
+          完成組數 {attempt.progress?.completedGroups ?? "—"}／
+          {attempt.progress?.totalGroups ?? "—"}
+        </span>
+        <small>作答中不顯示檢核明細與答案提示</small>
+      </section>
+      <div className="exam-model-layout">
+        <div className="exam-model-stage model-stage">
+          <Viewer
+            suspended={place === "workstation"}
+            topInset={125}
+            rightInset={panelOpen ? Math.min(innerWidth * 0.25, 360) : 0}
+            selection={selectedDetail}
+            onClear={() => {
+              setSelected("overview");
+              setSelectedDetail(null);
+              setPanelOpen(false);
+            }}
+            onInspect={(hit) => {
+              if (hit.partId === "console") {
+                setPlace("workstation");
+                return;
+              }
+              setSelected(hit.partId);
+              setSelectedDetail(hit);
+              setPanelOpen(true);
+              if (hit.slotId) {
+                setSelectedSlot(hit.slotId);
+                setTarget(hit.slotId);
+                setView("瓶槽");
+              } else if (hit.dailyId) {
+                setTarget(hit.dailyId);
+                setView(
+                  cups.includes(hit.dailyId)
+                    ? "CLEAN"
+                    : ["左側", "右側"].includes(hit.dailyId)
+                      ? "攪拌棒"
+                      : "探針",
+                );
+              } else if (hit.weeklyId) {
+                const id = hit.weeklyId.replace(/^(lock|tip)-/, "");
+                setTarget(id);
+                setView(
+                  id.startsWith("well-")
+                    ? "孔洞清潔"
+                    : id.startsWith("group-")
+                      ? "攪拌棒"
+                      : "探針",
+                );
+              } else if (
+                hit.partId === "ise-reagents" ||
+                hit.partId === "ise-reference"
+              )
+                setView("ISE 試劑");
+              else if (hit.partId.includes("syringes")) setView("syringes");
+              setInfoTab("actions");
+            }}
+            daily={{
+              active: true,
+              mode: s.dailyMode,
+              wiped: s.wiped,
+              cleanCup: s.cup,
+              drops: s.drops,
+            }}
+            weekly={weekly}
+            onWeeklySelect={modelClick}
+            practice={attempt.kind === "daily"}
+            practiceTarget={selected === "overview" ? "" : target}
+            onPracticeSelect={focus}
+            doorState={{
+              ...closedDoors,
+              "ise-top": s.instrument?.iseTop ?? s.lid,
+              "ise-top-rear": s.instrument?.iseTop ?? s.lid,
+              "ise-middle": !!s.instrument?.iseReagents,
+              "ise-bottom": !!s.instrument?.iseReference,
+              "syringe-front": s.dailyTasks
+                ? !!s.instrument?.frontSyringe
+                : s.lid,
+              "syringe-rear": !!s.instrument?.rearSyringe,
+            }}
+            iseState={{ open: s.instrument?.iseModule ?? s.lid, removed: [] }}
+            selected={selected}
+            internal={s.instrument?.mainLid ?? s.lid}
+            labels={true}
+            request={request}
+            onSelect={(id) => {
+              if (id === "console") {
+                setPlace("workstation");
+                return;
+              }
+              setSelected(id);
+              setSelectedDetail(null);
+              setPanelOpen(true);
+            }}
+            zoom={zoom}
+            onReady={() => {}}
+            onError={() => {}}
+            bottles={s.bottles}
+            selectedSlot={selectedSlot}
+            onSlot={focus}
+          />
+          <div className="exam-view-tools" hidden={place !== "model"}>
+            {views.map((v) => (
               <button
-                aria-label="放大考試模型"
-                onClick={() => setZoom((z) => z + 1)}
+                key={v.id}
+                onClick={() => {
+                  setSelected("overview");
+                  setRequest((r) => ({ ...v, serial: r.serial + 1 }));
+                }}
               >
-                <Plus size={17} />
+                {v.label}
               </button>
-              <button
-                aria-label="縮小考試模型"
-                onClick={() => setZoom((z) => z - 1)}
-              >
-                <Minus size={17} />
-              </button>
-              <button
-                aria-label="重設考試視角"
-                onClick={() =>
-                  setRequest((r) => ({ ...views[0], serial: r.serial + 1 }))
-                }
-              >
-                <RotateCcw size={17} />
-              </button>
-            </div>
+            ))}
+            <button
+              aria-label="放大考試模型"
+              onClick={() => setZoom((z) => z + 1)}
+            >
+              <Plus size={17} />
+            </button>
+            <button
+              aria-label="縮小考試模型"
+              onClick={() => setZoom((z) => z - 1)}
+            >
+              <Minus size={17} />
+            </button>
+            <button
+              aria-label="重設考試視角"
+              onClick={() =>
+                setRequest((r) => ({ ...views[0], serial: r.serial + 1 }))
+              }
+            >
+              <RotateCcw size={17} />
+            </button>
           </div>
-          <aside className="exam-model-panel" aria-label="考試模型工具">
+        </div>
+        <aside
+          className="exam-model-panel"
+          aria-label="考試模型工具"
+          hidden={!panelOpen || place !== "model"}
+        >
+          <header className="hud-card-header">
+            <strong>部件操作</strong>
+            <button
+              aria-label="收合考試部件資訊"
+              onClick={() => setPanelOpen(false)}
+            >
+              −
+            </button>
+          </header>
+          <nav className="hud-info-tabs">
+            {(
+              [
+                ["actions", "操作"],
+                ["info", "認識"],
+                ["photo", "實機照片"],
+              ] as const
+            ).map(([id, name]) => (
+              <button
+                key={id}
+                aria-pressed={infoTab === id}
+                onClick={() => setInfoTab(id)}
+              >
+                {name}
+              </button>
+            ))}
+          </nav>
+          {infoTab !== "actions" && (
+            <PartInformation
+              part={partById[selected]}
+              tab={infoTab}
+              detail={
+                selectedDetail?.weeklyId ||
+                selectedDetail?.dailyId ||
+                (selectedDetail?.slotId
+                  ? slotById[selectedDetail.slotId]?.label
+                  : undefined)
+              }
+              photoSelection={{
+                targetId: selectedDetail?.weeklyId || selectedDetail?.dailyId,
+                slotId: selectedDetail?.slotId,
+              }}
+            />
+          )}
+          <div hidden={infoTab !== "actions"}>
             <nav className="exam-tool-tabs">
               {(attempt.kind === "weekly"
                 ? [
@@ -616,6 +751,7 @@ export default function ExamRoom({
                 dispatch={dispatch}
                 disabled={disabled}
                 kind={attempt.kind}
+                allowIseDrain={hasDailyIseDrain(attempt.version)}
                 target={target}
                 focus={focus}
               />
@@ -673,6 +809,7 @@ export default function ExamRoom({
             )}
             {view === "瓶槽" && (
               <BottleControls
+                version={attempt.version}
                 s={s}
                 dispatch={dispatch}
                 disabled={disabled}
@@ -701,10 +838,68 @@ export default function ExamRoom({
                 ))}
               </div>
             )}
-          </aside>
-        </div>
-      ) : (
+          </div>
+        </aside>
+        {!panelOpen && (
+          <button
+            className="exam-panel-restore"
+            onClick={() => setPanelOpen(true)}
+          >
+            展開部件操作
+          </button>
+        )}
+      </div>
+      <div
+        className="exam-workstation-overlay"
+        tabIndex={-1}
+        hidden={place !== "workstation"}
+        role="dialog"
+        aria-label="考試操作工作站"
+        onKeyDown={(e) => {
+          if (e.key !== "Escape" || e.defaultPrevented) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (
+            e.target instanceof HTMLInputElement ||
+            e.target instanceof HTMLTextAreaElement ||
+            e.target instanceof HTMLSelectElement
+          ) {
+            e.target.blur();
+            e.currentTarget.focus();
+            return;
+          }
+          setPlace("model");
+        }}
+      >
         <ExamWorkstation
+          qcSavedVersion={qcSavedVersion}
+          sessionHud={
+            <>
+              <span>
+                考試模式 · 經過 {Math.floor(elapsed / 60)}:
+                {String(elapsed % 60).padStart(2, "0")} · 完成組數{" "}
+                {attempt.progress?.completedGroups ?? "—"}／
+                {attempt.progress?.totalGroups ?? "—"}
+              </span>
+              <span role={failure ? "alert" : "status"}>
+                {pending ? "保存中…" : failure || message || "已保存"}
+              </span>
+              {hasRetry && (
+                <button
+                  disabled={pending}
+                  onClick={() => retry.current && void send(retry.current)}
+                >
+                  重試保存
+                </button>
+              )}
+              <button disabled={disabled} onClick={() => setConfirm("abandon")}>
+                放棄本次
+              </button>
+              <button disabled={disabled} onClick={() => setConfirm("submit")}>
+                完成
+              </button>
+            </>
+          }
           attempt={attempt}
           dispatch={dispatch}
           disabled={disabled}
@@ -729,9 +924,16 @@ export default function ExamRoom({
           }}
           now={now}
         />
-      )}
+      </div>
       {confirm && (
-        <div className="exam-confirm-backdrop">
+        <dialog
+          ref={confirmDialog}
+          className="exam-confirm-backdrop"
+          onCancel={(e) => {
+            e.preventDefault();
+            if (!pending) setConfirm(null);
+          }}
+        >
           <section
             role="alertdialog"
             aria-label={confirm === "submit" ? "確認交卷" : "確認放棄"}
@@ -760,7 +962,7 @@ export default function ExamRoom({
                   : "確認放棄"}
             </button>
           </section>
-        </div>
+        </dialog>
       )}
     </section>
   );
@@ -771,21 +973,24 @@ function InstrumentControls({
   dispatch,
   disabled,
   weekly,
+  modes = true,
 }: {
   s: Simulation;
   dispatch: Dispatch;
   disabled: boolean;
   weekly: boolean;
+  modes?: boolean;
 }) {
   if (s.instrument)
     return (
       <fieldset className="exam-controls">
         <legend>儀器狀態</legend>
-        {(
-          [
-            ["analyzerMaintenance", "Analyzer Maintenance", "analyzer"],
-            ["iseMaintenance", "ISE Maintenance", "ise"],
-          ] as const
+        {(modes
+          ? ([
+              ["analyzerMaintenance", "Analyzer Maintenance", "analyzer"],
+              ["iseMaintenance", "ISE Maintenance", "ise"],
+            ] as const)
+          : []
         ).map(([key, label, target]) => (
           <label key={key}>
             <input
@@ -912,6 +1117,7 @@ function ProbeControls({
   dispatch,
   disabled,
   kind,
+  allowIseDrain = false,
   target,
   focus,
 }: {
@@ -919,10 +1125,16 @@ function ProbeControls({
   dispatch: Dispatch;
   disabled: boolean;
   kind: Attempt["kind"];
+  allowIseDrain?: boolean;
   target: string;
   focus: (id: string) => void;
 }) {
-  const ids = kind === "weekly" ? detailedProbes : dailyProbes,
+  const ids =
+      kind === "weekly"
+        ? detailedProbes
+        : allowIseDrain
+          ? [...dailyProbes, "ISE"]
+          : dailyProbes,
     id = ids.includes(target) ? target : ids[0];
   return (
     <div className="exam-controls">
@@ -958,6 +1170,18 @@ function ProbeControls({
             (value) => dispatch({ type: "drain-result", target: id, value }),
             disabled,
           )}
+        </>
+      ) : id === "ISE" ? (
+        <>
+          {resultSelect(
+            "ISE 直線排水檢查",
+            s.drains.ISE || "",
+            (value) => {
+              void dispatch({ type: "drain-result", target: "ISE", value });
+            },
+            disabled,
+          )}
+          <p>Replace Sample Probe · DIAG 設定位於操作工作站。</p>
         </>
       ) : (
         <>
@@ -1115,6 +1339,7 @@ function CupControls({
   );
 }
 function BottleControls({
+  version,
   s,
   dispatch,
   disabled,
@@ -1122,6 +1347,7 @@ function BottleControls({
   selected,
   weekly,
 }: {
+  version: string;
   s: Simulation;
   dispatch: Dispatch;
   disabled: boolean;
@@ -1133,6 +1359,14 @@ function BottleControls({
     [level, setLevel] = useState("1"),
     [chemistry, setChemistry] = useState("hcl");
   const id = selected || w2Positions[0];
+  const accessible = s.instrument
+    ? canHandleBottle(
+        s.instrument,
+        slotById[id].module,
+        disabled,
+        !hasRevisedWorkstation(version),
+      )
+    : !disabled && s.maintenance && s.lid;
   return (
     <div className="exam-controls">
       <h3>瓶槽</h3>
@@ -1213,9 +1447,12 @@ function BottleControls({
           </select>
         </label>
       )}
+      {!accessible && (
+        <p role="note">上蓋、保養模式或運轉狀態不允許操作此瓶槽。</p>
+      )}
       <div className="exam-action-grid">
         <button
-          disabled={disabled}
+          disabled={!accessible}
           onClick={() =>
             dispatch({ type: "bottle", target: id, value: "remove" })
           }
@@ -1223,7 +1460,7 @@ function BottleControls({
           取出瓶子
         </button>
         <button
-          disabled={disabled}
+          disabled={!accessible}
           onClick={() =>
             dispatch({
               type: "bottle",
@@ -1236,7 +1473,7 @@ function BottleControls({
           放入瓶子
         </button>
         <button
-          disabled={disabled}
+          disabled={!accessible}
           onClick={() =>
             dispatch({
               type: "bottle",
@@ -1254,12 +1491,16 @@ function BottleControls({
 }
 
 function ExamWorkstation({
+  qcSavedVersion,
+  sessionHud,
   attempt,
   dispatch: perform,
   disabled,
   onModel,
   now,
 }: {
+  qcSavedVersion: number;
+  sessionHud: ReactNode;
   attempt: Attempt;
   dispatch: Dispatch;
   disabled: boolean;
@@ -1273,7 +1514,8 @@ function ExamWorkstation({
     [tab, setTab] = useState("Maintenance"),
     [w2, setW2] = useState(false),
     [diag, setDiag] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [physicalOpen, setPhysicalOpen] = useState(false);
   function navigate(p: string) {
     setPage(p);
     setTab("Maintenance");
@@ -1284,7 +1526,10 @@ function ExamWorkstation({
   const ise = page === "ISE Maintenance",
     maintenance = ise || page === "Analyzer Maintenance";
   function action(name: string) {
-    if (name === "Replace Sample Probe" && weekly) {
+    if (
+      name === "Replace Sample Probe" &&
+      (weekly || (ise && hasDailyIseDrain(attempt.version)))
+    ) {
       setDiag(ise ? "ISE" : "Sample-1");
       return;
     }
@@ -1293,6 +1538,11 @@ function ExamWorkstation({
       return;
     }
     if (name === "Cleaning Probe" || name === "Inspect Probe & Mixing Bar") {
+      if (
+        name === "Cleaning Probe" ||
+        dailyProbes.every((id) => s.wiped.includes(id))
+      )
+        setPhysicalOpen(true);
       dispatch({
         type: "daily-mode",
         value: name === "Cleaning Probe" ? "wipe" : "inspect",
@@ -1307,15 +1557,51 @@ function ExamWorkstation({
   }
   return (
     <div
-      className={`exam-workstation ${page === "Rack Requisition" ? "exam-rack-workstation" : ""}`}
+      className={`exam-workstation workstation-software ${page === "Rack Requisition" ? "exam-rack-workstation" : ""}`}
+      onKeyDown={(e) => {
+        if (
+          e.key !== "Escape" ||
+          e.target instanceof HTMLInputElement ||
+          e.target instanceof HTMLSelectElement ||
+          e.target instanceof HTMLTextAreaElement
+        )
+          return;
+        if (diag || w2 || physicalOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          setDiag("");
+          setW2(false);
+          setPhysicalOpen(false);
+        }
+      }}
     >
+      <div className="ws-session-hud">
+        {sessionHud}
+        <details className="ws-instrument-hud">
+          <summary>儀器狀態</summary>
+          <InstrumentControls
+            s={s}
+            dispatch={dispatch}
+            disabled={disabled}
+            weekly={false}
+            modes={!(maintenance && tab === "Maintenance")}
+          />
+        </details>
+      </div>
+      <header className="ws-toolbar">
+        <strong>
+          AU5800 <span>操作工作站</span>
+        </strong>
+        <span className="ws-simulation">教學模擬 · 未連接實機</span>
+        <button onClick={() => onModel()}>到模型操作</button>
+        <button onClick={() => navigate("Home")}>Home 主選單</button>
+        <button onClick={() => onModel()}>退出螢幕 ×</button>
+      </header>
       <header className="ws-title">
         <span>{maintenance ? "Maintenance" : page}</span>
-        <b>AU5800</b>
-        <button onClick={() => navigate("Home")}>Home 主選單</button>
-        <button onClick={() => onModel()}>到模型操作</button>
+        <b>{maintenance ? "User Maintenance" : "AU5800"}</b>
       </header>
-      {notice && <p role="status">{notice}</p>}
+
       {page === "Home" ? (
         <>
           <div className="ws-status-links">
@@ -1350,12 +1636,6 @@ function ExamWorkstation({
         </>
       ) : page === "日保養補充與檢查" && s.dailyTasks ? (
         <>
-          <InstrumentControls
-            s={s}
-            dispatch={dispatch}
-            disabled={disabled}
-            weekly={false}
-          />
           <DailyTasksPanel
             tasks={s.dailyTasks}
             instrument={s.instrument!}
@@ -1412,12 +1692,7 @@ function ExamWorkstation({
               </button>
             ))}
           </nav>
-          <InstrumentControls
-            s={s}
-            dispatch={dispatch}
-            disabled={disabled}
-            weekly={false}
-          />
+
           {tab === "Photocal Monitor" && !ise ? (
             <PhotocalMonitor s={s} dispatch={dispatch} disabled={disabled} />
           ) : tab === "Calibration" && ise && !weekly ? (
@@ -1428,81 +1703,74 @@ function ExamWorkstation({
             />
           ) : tab === "Maintenance" ? (
             <>
-              <div className="exam-maintenance-layout">
-                <div className="exam-table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>No.</th>
-                        <th>Maintenance</th>
-                        <th>Frequency</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(ise ? iseRows : analyzerRows).map(
-                        ([label, frequency], i) => (
-                          <tr key={label}>
-                            <td>{i + 1}</td>
-                            <td>{label}</td>
-                            <td>{frequency}</td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="ws-action-panel exam-controls">
-                  <button disabled={disabled}>Update</button>
-                  {(ise ? iseActions : analyzerActions)
-                    .flat()
-                    .filter(Boolean)
-                    .map((name) => (
-                      <button
-                        key={name}
-                        disabled={
-                          disabled ||
-                          !!(
-                            ise &&
-                            s.dailyTasks &&
-                            (!s.instrument?.iseMaintenance ||
-                              s.instrument.iseModule)
-                          )
-                        }
-                        onClick={() => action(name!)}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  {ise && !weekly && (
-                    <button
-                      disabled={
-                        disabled ||
-                        !!(
-                          s.dailyTasks &&
-                          !canRunIseProgram(s.instrument!, "cleaning")
-                        )
-                      }
-                      onClick={() => dispatch({ type: "cleaning" })}
-                    >
-                      Cleaning
-                    </button>
-                  )}
-                  {ise && !weekly && s.dailyTasks && (
-                    <button
-                      disabled={
-                        disabled || !canRunIseProgram(s.instrument!, "cleaning")
-                      }
-                      onClick={() =>
-                        setNotice(
-                          "Cleaning (Enhanced) 尚未提供可執行的模擬程序。",
-                        )
-                      }
-                    >
-                      Cleaning (Enhanced)
-                    </button>
-                  )}
-                </div>
-              </div>
+              <MaintenanceSurface
+                ise={ise}
+                iseInterlocks={!!s.dailyTasks}
+                enabled={
+                  s.instrument
+                    ? ise
+                      ? s.instrument.iseMaintenance
+                      : s.instrument.analyzerMaintenance
+                    : s.maintenance
+                }
+                busy={disabled}
+                blocked={!!(s.dailyTasks && s.instrument?.iseModule)}
+                cleaningBlocked={!!(s.dailyTasks && s.instrument?.iseModule)}
+                toggle={(value) => {
+                  void dispatch({
+                    type: "maintenance",
+                    target: ise ? "ise" : "analyzer",
+                    value,
+                  });
+                }}
+                workspace={
+                  !ise && !weekly && physicalOpen ? (
+                    <div className="ws-inline-program">
+                      <header>
+                        <strong>Inspect Probe & Mixing Bar</strong>
+                        <button onClick={() => setPhysicalOpen(false)}>
+                          關閉子工作區
+                        </button>
+                      </header>
+                      <div className="ws-program-content">
+                        <ProbePractice
+                          d={{
+                            active: true,
+                            mode: s.dailyMode,
+                            wiped: s.wiped,
+                            wipeAccessible: !disabled,
+                            canInspect: !disabled,
+                            drains: s.dailyDrains,
+                            mix: s.dailyMix,
+                            setWiped: () => {},
+                            setDrains: () => {},
+                            setMix: () => {},
+                          }}
+                          onWipe={(target) => {
+                            void dispatch({ type: "daily-wipe", target });
+                          }}
+                          onDrain={(target, value) => {
+                            void dispatch({
+                              type: "daily-drain",
+                              target,
+                              value,
+                            });
+                          }}
+                          onMix={(target, value) => {
+                            void dispatch({ type: "daily-mix", target, value });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : undefined
+                }
+                update={() => setNotice("Update 未改變保養紀錄。")}
+                perform={(name) =>
+                  name === "Cleaning"
+                    ? void dispatch({ type: "cleaning" })
+                    : action(name)
+                }
+              />
               <nav className="ws-footer">
                 {(ise ? iseFooter : analyzerFooter).map((name) => (
                   <button
@@ -1521,36 +1789,6 @@ function ExamWorkstation({
             </>
           ) : (
             <div className="exam-controls">本頁尚無可執行的模擬程序。</div>
-          )}
-          {!ise && !weekly && s.dailyMode && (
-            <div className="exam-controls">
-              <button onClick={() => onModel("R1-1")}>探針／攪拌單元</button>
-              {dailyProbes.map((id) => (
-                <div key={id}>
-                  <button
-                    disabled={disabled}
-                    onClick={() => dispatch({ type: "daily-wipe", target: id })}
-                  >
-                    {id} 酒精棉擦拭
-                  </button>
-                  {resultSelect(
-                    `${id} 排水`,
-                    s.dailyDrains[id] || "",
-                    (value) =>
-                      dispatch({ type: "daily-drain", target: id, value }),
-                    disabled,
-                  )}
-                </div>
-              ))}
-              {["左側", "右側"].map((id) =>
-                resultSelect(
-                  `${id} mixing bars`,
-                  s.dailyMix[id] || "",
-                  (value) => dispatch({ type: "daily-mix", target: id, value }),
-                  disabled,
-                ),
-              )}
-            </div>
           )}
           {w2 && (
             <div
@@ -1653,29 +1891,28 @@ function ExamWorkstation({
       ) : page === "Analyzer Status" ? (
         <TemperatureControls s={s} dispatch={dispatch} disabled={disabled} />
       ) : page === "Start Condition" ? (
-        <div className="exam-controls">
-          <h2>Start Condition</h2>
-          <p>Index：{s.index || "—"}</p>
-          <button
-            disabled={disabled}
-            onClick={() => dispatch({ type: "index-edit" })}
-          >
-            Edit
-          </button>
-          <button
-            disabled={disabled}
-            onClick={() => dispatch({ type: "index" })}
-          >
-            New Index
-          </button>
-          <p>Group of Tests　1.ROUTINE</p>
-          <p>Operator Name　MAINTENANCE</p>
-        </div>
+        <StartCondition
+          d={{
+            active: true,
+            editing: s.indexEditing,
+            index: s.index,
+            setIndex: () => {},
+            setEditing: () => {},
+          }}
+          disabled={disabled}
+          onEdit={() => {
+            void dispatch({ type: "index-edit" });
+          }}
+          onIndex={() => {
+            void dispatch({ type: "index" });
+          }}
+        />
       ) : page === "Reagent Management" && !weekly ? (
         s.instrument ? (
           <ExamReagentManagement
             rows={s.reagents}
             disabled={disabled}
+            checked={s.reagentChecked}
             onReplace={(id) =>
               dispatch({ type: "reagent", target: id, value: "replace" })
             }
@@ -1685,10 +1922,19 @@ function ExamWorkstation({
           <ReagentControls s={s} dispatch={dispatch} disabled={disabled} />
         )
       ) : page === "Rack Requisition" && !weekly ? (
-        <RackControls s={s} dispatch={dispatch} disabled={disabled} />
+        <RackControls
+          s={s}
+          dispatch={dispatch}
+          disabled={disabled}
+          qcSavedVersion={qcSavedVersion}
+        />
       ) : (
         <p className="exam-controls">{page} 尚無可執行的模擬程序。</p>
       )}
+      <div className="ws-message" role="status">
+        {notice ||
+          "教學介面 · Entry 僅登記申請，不重設穩定時間。按 Esc 返回 3D 儀器。"}
+      </div>
     </div>
   );
 }
@@ -1857,36 +2103,38 @@ function TemperatureControls({
   const [bath, setBath] = useState(s.temp.bath),
     [coolant, setCoolant] = useState(s.temp.coolant);
   return (
-    <div className="exam-controls">
-      <h2>Analyzer Status</h2>
-      <p>示意讀值：Bath Temp. 37.0 °C · Coolant Temp. 8.2 °C</p>
-      <label>
-        Bath Temp. 登記
-        <input
-          type="number"
-          step="0.1"
-          value={bath}
-          onChange={(e) => setBath(e.target.value)}
-        />
-      </label>
-      <label>
-        Coolant Temp. 登記
-        <input
-          type="number"
-          step="0.1"
-          value={coolant}
-          onChange={(e) => setCoolant(e.target.value)}
-        />
-      </label>
-      <button
-        disabled={disabled}
-        onClick={() =>
-          dispatch({ type: "temperature", data: { bath, coolant } })
-        }
-      >
-        儲存溫度紀錄
-      </button>
-    </div>
+    <AnalyzerStatusSurface>
+      <section className="ws-checks">
+        <h2>Analyzer Status</h2>
+        <p>示意讀值：Bath Temp. 37.0 °C · Coolant Temp. 8.2 °C</p>
+        <label>
+          Bath Temp. 登記
+          <input
+            type="number"
+            step="0.1"
+            value={bath}
+            onChange={(e) => setBath(e.target.value)}
+          />
+        </label>
+        <label>
+          Coolant Temp. 登記
+          <input
+            type="number"
+            step="0.1"
+            value={coolant}
+            onChange={(e) => setCoolant(e.target.value)}
+          />
+        </label>
+        <button
+          disabled={disabled}
+          onClick={() =>
+            dispatch({ type: "temperature", data: { bath, coolant } })
+          }
+        >
+          儲存溫度紀錄
+        </button>
+      </section>
+    </AnalyzerStatusSurface>
   );
 }
 function CalibrationControls({
@@ -1899,43 +2147,35 @@ function CalibrationControls({
   disabled: boolean;
 }) {
   return (
-    <div className="exam-controls">
-      <h2>ISE Calibration</h2>
-      <CupControls s={s} dispatch={dispatch} disabled={disabled} daily={true} />
-      <p>
-        Serum：{s.cal.serum ? "本次模擬結果已產生" : "—"} · Urine：
-        {s.cal.urine ? "本次模擬結果已產生" : "—"}
-      </p>
-      {s.cal.serum && s.cal.urine && (
-        <p>本次模擬校正結果在示例範圍內，未連接實機。</p>
-      )}
-      <div className="exam-inline">
-        {["serum", "urine", "both"].map((id) => (
-          <button
-            key={id}
-            disabled={
-              disabled ||
-              !!(
-                s.dailyTasks && !canRunIseProgram(s.instrument!, "calibration")
-              )
-            }
-            onClick={() => dispatch({ type: "calibrate", target: id })}
-          >
-            {id === "serum"
-              ? "Serum Start"
-              : id === "urine"
-                ? "Urine Start"
-                : "Serum/Urine Start"}
-          </button>
-        ))}
-        <button
-          disabled={disabled}
-          onClick={() => dispatch({ type: "cal-review" })}
-        >
-          確認校正結果
-        </button>
-      </div>
-    </div>
+    <Calibration
+      d={{
+        active: true,
+        instrument: s.instrument || {
+          analyzerMaintenance: s.maintenance,
+          iseMaintenance: !s.maintenance,
+          mainLid: s.lid,
+          iseTop: s.lid,
+          iseModule: s.lid,
+        },
+        iseReady: true,
+        canCalibrate: true,
+        cleanCup: s.cup,
+        drops: s.drops,
+        cal: s.cal,
+        setCal: () => {},
+      }}
+      disabled={disabled}
+      notify={() => {}}
+      onStart={(serum, urine) => {
+        void dispatch({
+          type: "calibrate",
+          target: serum && urine ? "both" : serum ? "serum" : "urine",
+        });
+      }}
+      onReview={() => {
+        void dispatch({ type: "cal-review" });
+      }}
+    />
   );
 }
 function ReagentControls({
@@ -2042,18 +2282,23 @@ function ReagentControls({
   );
 }
 function RackControls({
+  qcSavedVersion,
   s,
   dispatch,
   disabled,
 }: {
+  qcSavedVersion: number;
   s: Simulation;
   dispatch: Dispatch;
   disabled: boolean;
 }) {
   return (
-    <fieldset className="exam-native-rack" disabled={disabled}>
+    <div className="exam-native-rack">
       <RackRequisition
         exam
+        qcSavedVersion={qcSavedVersion}
+        disabled={disabled}
+        onQcEntry={(data) => dispatch({ type: "rack-qc-entry", data })}
         calibrationNeeds={
           s.instrument ? calibrationNeeds(s.reagents) : undefined
         }
@@ -2070,6 +2315,6 @@ function RackControls({
           })
         }
       />
-    </fieldset>
+    </div>
   );
 }

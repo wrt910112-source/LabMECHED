@@ -1,3 +1,4 @@
+import { selectPart, toggleMain } from "./ui";
 import { test, expect } from "@playwright/test";
 
 test("12 named wells, six resident bottles and replacement/refill rules", async ({
@@ -7,7 +8,7 @@ test("12 named wells, six resident bottles and replacement/refill rules", async 
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(page.getByText("3D LIVE", { exact: true })).toBeVisible();
-  await page.getByTestId("part-r2").click();
+  await selectPart(page,"r2",true);
   await page
     .getByRole("button", { name: "顯示全部 12 孔", exact: true })
     .click();
@@ -96,17 +97,19 @@ test("12 named wells, six resident bottles and replacement/refill rules", async 
     fullPage: true,
   });
   // Camera focus does not open the main cover; explicitly expose the recess.
-  await page.getByRole("switch").click();
+  await toggleMain(page);
+  await page.getByRole("button",{name:/聚焦部件/}).click();
+  await page.waitForTimeout(800);
   // Direct geometry hit within the focused recess, independent of DOM slot cards.
   const canvas = page.getByTestId("model-canvas"),
     bounds = (await canvas.boundingBox())!;
   await page.mouse.move(
-    bounds.x + bounds.width / 2,
+    bounds.x + (bounds.width - Math.min(bounds.width*.25,360)) / 2,
     bounds.y + bounds.height / 2,
   );
   await expect(page.locator(".hover-part")).toContainText("57.CLN-1");
   await page.mouse.click(
-    bounds.x + bounds.width / 2,
+    bounds.x + (bounds.width - Math.min(bounds.width*.25,360)) / 2,
     bounds.y + bounds.height / 2,
   );
   await expect(page.locator(".viewer-host")).toHaveAttribute(
@@ -120,7 +123,7 @@ test("both maintenance modes accept W2, unused CLN-2 never accepts bottles", asy
   page,
 }) => {
   await page.goto("/");
-  await page.getByTestId("part-r2").click();
+  await selectPart(page,"r2",true);
   await page.getByTestId("slot-r2-inner-3").click();
   await page.getByRole("button", { name: "雙周保養", exact: true }).click();
   await page.getByRole("button", { name: "放入瓶子", exact: true }).click();

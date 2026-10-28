@@ -1,3 +1,4 @@
+import { selectPart } from "./ui";
 import { test, expect } from "@playwright/test";
 test("independent ISE covers, reference shelf, narrow loader cabinet and rear track", async ({
   page,
@@ -61,25 +62,25 @@ test("independent ISE covers, reference shelf, narrow loader cabinet and rear tr
   expect(angles["ise-middle"][0]).toBe(0);
   expect(angles["ise-bottom"][1]).toBeCloseTo(-1.6, 3);
   expect(angles["loader-door"][1]).toBeCloseTo(1.6, 3);
-  await page.getByTestId("part-ise").click();
+  await selectPart(page,"ise");
   await page.waitForTimeout(1000);
   await page.screenshot({
     path: `test-results/${info.project.name}-ise-exterior.png`,
   });
   for (const id of ["ise-top", "ise-top-rear", "ise-middle", "ise-bottom"]) {
-    await page.getByTestId(`door-${id}`).click();
-    await expect(page.getByTestId(`door-${id}`)).toHaveAttribute(
+    await page.getByTestId(`context-${id}`).click();
+    await expect(page.getByTestId(`context-${id}`)).toHaveAttribute(
       "aria-pressed",
       "true",
     );
   }
-  await page.getByTestId("part-ise-reagents").click();
+  await selectPart(page,"ise-reagents");
   await page.waitForTimeout(1000);
   await page.screenshot({
     path: `test-results/${info.project.name}-ise-middle.png`,
   });
-  await page.getByTestId("part-ise-reference").click();
-  await expect(page.getByTestId("door-ise-bottom")).toHaveAttribute(
+  await selectPart(page,"ise-reference");
+  await expect(page.getByTestId("context-ise-bottom")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -87,18 +88,18 @@ test("independent ISE covers, reference shelf, narrow loader cabinet and rear tr
   await page.screenshot({
     path: `test-results/${info.project.name}-ise-reference.png`,
   });
-  await page.getByTestId("part-clean-solution").click();
-  await page.getByTestId("door-loader-door").click();
+  await selectPart(page,"clean-solution");
+  await page.getByTestId("context-loader-door").click();
   await page.waitForTimeout(1000);
   await page.screenshot({
     path: `test-results/${info.project.name}-clean-solution.png`,
   });
-  await page.getByTestId("door-loader-door").click();
-  await expect(page.getByTestId("door-loader-door")).toHaveAttribute(
+  await page.getByTestId("context-loader-door").click();
+  await expect(page.getByTestId("context-loader-door")).toHaveAttribute(
     "aria-pressed",
     "false",
   );
-  await page.getByTestId("part-sample-track").click();
+  await selectPart(page,"sample-track");
   await page.waitForTimeout(1000);
   await page.screenshot({
     path: `test-results/${info.project.name}-sample-track.png`,
