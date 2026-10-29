@@ -46,7 +46,7 @@ test("unified software restores workspace and ISE drain stays independent of six
     path: `artifacts/workstation-v5/${info.project.name}-v5-practice-maintenance.png`,
   });
   await iseDrain(ws);
-  await expect(ws.locator(".ws-session-hud")).toContainText("日保養 0／12");
+  await expect(ws.locator(".ws-session-hud")).toContainText("日保養 0／13");
   await expect(b("Replace Sample Probe")).toBeDisabled();
   await instrument(ws, "ISE Maintenance", true);
   await b("Replace Sample Probe").click();

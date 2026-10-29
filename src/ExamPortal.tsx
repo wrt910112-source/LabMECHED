@@ -26,6 +26,7 @@ import {
   type ExamKind,
 } from "../shared/exam";
 import ExamRoom from "./ExamRoom";
+import { TroubleshootingExam } from "./TroubleRuntime";
 import "./exam.css";
 
 export const duration = (ms: number) => {
@@ -260,24 +261,47 @@ export default function ExamPortal({
           </form>
         </div>
       ) : attempt?.status === "active" ? (
-        <ExamRoom
-          initial={attempt}
-          onUpdate={setAttempt}
-          onSessionExpired={() => {
-            setUser(null);
-            setMessage("登入已失效，重新登入後可繼續本次考試。");
-          }}
-          onFinished={(done) => {
-            setAttempt(done);
-            void api<{ attempts: Attempt[] }>("/attempts")
-              .then((r) => setHistory(r.attempts))
-              .catch((e) => setMessage(e.message));
-          }}
-          onAbandon={() => {
-            setAttempt(null);
-            void refresh();
-          }}
-        />
+        <>
+          {attempt.kind === "troubleshooting" ? (
+            <TroubleshootingExam
+              initial={attempt}
+              onUpdate={setAttempt}
+              onFinished={(done) => {
+                setAttempt(done);
+                void api<{ attempts: Attempt[] }>("/attempts")
+                  .then((r) => setHistory(r.attempts))
+                  .catch((e) => setMessage(e.message));
+              }}
+              onAbandon={() => {
+                setAttempt(null);
+                void refresh();
+              }}
+              onSessionExpired={() => {
+                setUser(null);
+                setMessage("登入已失效，重新登入後可繼續本次考試。");
+              }}
+            />
+          ) : (
+            <ExamRoom
+              initial={attempt}
+              onUpdate={setAttempt}
+              onSessionExpired={() => {
+                setUser(null);
+                setMessage("登入已失效，重新登入後可繼續本次考試。");
+              }}
+              onFinished={(done) => {
+                setAttempt(done);
+                void api<{ attempts: Attempt[] }>("/attempts")
+                  .then((r) => setHistory(r.attempts))
+                  .catch((e) => setMessage(e.message));
+              }}
+              onAbandon={() => {
+                setAttempt(null);
+                void refresh();
+              }}
+            />
+          )}
+        </>
       ) : attempt?.status === "submitted" ? (
         <div className="exam-scroll">
           <Debrief
@@ -366,10 +390,19 @@ export default function ExamPortal({
                       </article>
                     );
                   })}
-                  <article className="exam-card mission-card locked">
+                  <article
+                    className="exam-card mission-card"
+                    data-requested={requestedKind === "troubleshooting"}
+                  >
                     <h2>障礙排除</h2>
-                    <p>尚未建置完整情境</p>
-                    <button disabled>尚未開放</button>
+                    <p>UIBC 品管異常：從判讀到回溯 · 十二步獨立情境</p>
+                    <button
+                      className="exam-primary"
+                      disabled={pending}
+                      onClick={() => void start("troubleshooting")}
+                    >
+                      開始測驗
+                    </button>
                   </article>
                 </div>
                 <section className="exam-card exam-achievements">

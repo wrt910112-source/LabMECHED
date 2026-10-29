@@ -48,3 +48,11 @@
 - Chrome 1366×768、Edge 1920×1080 共 10 個相關案例通過（8 個首輪通過，照片相簿案例修正測試頁籤導覽後兩個重跑通過）。確認 ISE 內部與零件照片、Wash Solution 櫃名稱與開門按鈕、前方 syringe、保養杯、探索及練習的左右攪拌照片、照片切換、放大／Esc、原瓶槽對應及瀏覽不推進練習。
 - 保養規則、模型幾何、考試評分及正式資料庫均未變更。
 - 新實際畫面位於 `artifacts/real-photos/`：`chrome-1366-ise-internal-photo.png` 為內部照片放大畫面；各瀏覽器的 `clean-solution-updated.png`、`syringes-updated.png`、`mixer-左側-updated.png`、`mixer-右側-updated.png` 為指定部位的照片面板。
+
+## CALI／QC 備料照片
+
+新增 `CALI.jpg`、`QC.jpg` 兩張本院儲存架合照，來源與匯入檔 SHA-256 均一致，保留原始內容。材料資訊卡的對照集中於 `shared/materialCatalog.ts`；未能辨識的瓶子不推定身份。這兩張實拍不代替尚缺的五張配製保存資料原圖，也不當作批號或期限核對證據。ITA-3 標籤與任務 ITA-2 的差異保留待確認。完整記錄見 [第十三組交付紀錄](PREPARATION_DELIVERY.md)。
+
+## UIBC 情境原圖
+
+新增原始 `LIS QC審批畫面.png`、`LIS QC L-J chart.png`、`UIBC試劑瓶.jpg`、`檢體回溯填報.png`，來源為本次使用者提供的 `AU5800實體` 目錄。四張 SHA-256 與來源相同，未編修。前三個 LIS 畫面／圖表參考以可操作程式重建，UIBC 瓶圖保留為實拍參考；不直接把圖當互動頁面背景、不以圖上批號、容量、日期或舊規則覆寫情境數據。實際遊戲截圖、未知資料及驗證見 [UIBC_DELIVERY.md](UIBC_DELIVERY.md)。

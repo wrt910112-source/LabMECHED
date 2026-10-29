@@ -4,6 +4,7 @@ import {
   QuestLog,
   PartInformation,
   type TaskKind,
+  type MissionKind,
 } from "./SimulatorHud";
 import { dailyQuests, weeklyQuests } from "./hudTasks";
 import { ContextCovers } from "./ContextCovers";
@@ -43,6 +44,16 @@ import {
   X,
 } from "lucide-react";
 import Viewer, { type CameraRequest, type SceneSelection } from "./Viewer";
+import PreparationPanel from "./PreparationPanel";
+import TroubleshootingRoom from "./TroubleshootingRoom";
+import { useTroublePractice } from "./TroubleRuntime";
+import type { ExamKind } from "../shared/exam";
+import type { PreparationView } from "./preparationModel";
+import {
+  applyPreparation,
+  initialPreparation,
+  type PreparationAction,
+} from "../shared/preparation";
 import { asset, partById, parts, views, type PartId } from "./data";
 import DetergentPanel from "./DetergentPanel";
 import SyringePanel from "./SyringePanel";
@@ -69,7 +80,9 @@ export default function App() {
     [panelTab, setPanelTab] = useState<"info" | "actions" | "photo">("info");
   const [selection, setSelection] = useState<SceneSelection | null>(null),
     [currentQuest, setCurrentQuest] = useState("");
-  const [requestedExam, setRequestedExam] = useState<TaskKind>("daily");
+  const [requestedExam, setRequestedExam] = useState<ExamKind>("daily");
+  const trouble = useTroublePractice();
+  const [troubleOpen, setTroubleOpen] = useState(false);
   const [selected, setSelected] = useState<PartId>("overview"),
     [internal, setInternal] = useState(false),
     [labels, setLabels] = useState(true),
@@ -80,6 +93,16 @@ export default function App() {
     [photoIndex, setPhotoIndex] = useState(0),
     [activeView, setActiveView] = useState("front");
   const [workstationOpen, setWorkstationOpen] = useState(false);
+  const [preparationView, setPreparationView] =
+    useState<PreparationView | null>(null);
+  const [preparationMessage, setPreparationMessage] = useState("");
+  const [freePreparation, setFreePreparation] = useState(initialPreparation);
+  const freePreparationGate = { ready: true, token: "free-preparation" };
+  const freePreparationMode = sessionMode === "explore";
+  useEffect(() => {
+    setPreparationView(null);
+    setPreparationMessage("");
+  }, [sessionMode]);
 
   const [modelPractice, setModelPractice] = useState(false),
     [practiceTarget, setPracticeTarget] = useState("R1-1");
@@ -135,6 +158,28 @@ export default function App() {
             setTaskCenterOpen(true);
           },
         };
+  const preparationState = freePreparationMode
+    ? freePreparation
+    : daily.preparation;
+  const preparationAccess = freePreparationMode
+    ? freePreparationGate
+    : daily.loadingGate;
+  function prepare(action: PreparationAction) {
+    if (freePreparationMode) {
+      const result = applyPreparation(
+        freePreparation,
+        action,
+        freePreparationGate,
+        { freeSimulation: true },
+      );
+      setFreePreparation(result.state);
+      setPreparationMessage(result.error);
+      return !result.error;
+    }
+    const error = daily.prepare(action);
+    setPreparationMessage(error);
+    return !error;
+  }
   const bottles =
     sessionMode === "daily"
       ? dailyBottles
@@ -283,6 +328,7 @@ export default function App() {
   const photos = [p.photo, ...(p.extraPhotos ?? [])];
   const photo = photos[photoIndex] ?? p.photo;
   const select = useCallback((id: PartId) => {
+    setPreparationView(null);
     if (id === "console") setWorkstationOpen(true);
     if (id === "ise") setModelPractice(false);
     setSelected(id);
@@ -503,6 +549,11 @@ export default function App() {
     setRequest((r) => ({ ...camera, serial: r.serial + 1 }));
   }
   function locateTarget(id: string) {
+    if (id === "preparation") {
+      setPreparationView("bench");
+      setWorkstationOpen(false);
+      return;
+    }
     if (weeklyOpen && activeQuest) {
       const view = [
         "準備",
@@ -575,7 +626,7 @@ export default function App() {
       else if (!id.startsWith("diag-")) weekly.setView("探針");
     }
   }
-  function startTask(kind: TaskKind, exam: boolean, restart: boolean) {
+  function startTask(kind: MissionKind, exam: boolean, restart: boolean) {
     setTaskCenterOpen(false);
     if (actionTimer.current) {
       clearTimeout(actionTimer.current);
@@ -590,6 +641,14 @@ export default function App() {
       setRequestedExam(kind);
       setWorkstationOpen(false);
       setExamOpen(true);
+      return;
+    }
+    if (kind === "troubleshooting") {
+      setPreparationView(null);
+      setWorkstationOpen(false);
+      if (!trouble.active || restart) trouble.reset();
+      else trouble.start();
+      setTroubleOpen(true);
       return;
     }
     setSessionMode(kind);
@@ -634,6 +693,11 @@ export default function App() {
     setRequest((r) => ({ ...views[0], serial: r.serial + 1 }));
   }
   function questComputer(route: string) {
+    if (route === "校正與品管上機") {
+      setPreparationView("bench");
+      setWorkstationOpen(false);
+      return;
+    }
     setWorkstationNavigation((old) => ({
       ...old,
       [sessionMode]: { serial: (old[sessionMode]?.serial || 0) + 1, route },
@@ -677,6 +741,7 @@ export default function App() {
   return (
     <div
       className={`app-shell simulator-shell ${panelOpen ? "has-info" : ""} ${directoryOpen ? "directory-open" : ""}`}
+      data-preparation={!!preparationView && !examSceneActive}
       data-mode={sessionMode}
     >
       <header className="topbar">
@@ -730,6 +795,16 @@ export default function App() {
           >
             登入／考試
           </button>
+          {sessionMode !== "weekly" && (
+            <button
+              onClick={() => {
+                setPreparationView("bench");
+                setWorkstationOpen(false);
+              }}
+            >
+              備料工作台
+            </button>
+          )}
           <span className="version">
             EXPLORER <b>01</b>
           </span>
@@ -884,14 +959,31 @@ export default function App() {
                   {unavailable ? "3D 無法使用" : ready ? "3D LIVE" : "載入模型"}
                 </span>
               </div>
-              {!examSceneActive && (
+              {!examSceneActive && !troubleOpen && (
                 <Viewer
+                  preparation={
+                    preparationView
+                      ? {
+                          state: preparationState,
+                          gate: preparationAccess,
+                          freeSimulation: freePreparationMode,
+                          view: preparationView,
+                          exam: false,
+                        }
+                      : undefined
+                  }
+                  onPreparationSelect={(id) => {
+                    prepare({
+                      action: "select",
+                      target: id,
+                    });
+                  }}
                   suspended={workstationOpen}
                   onInspect={inspect}
                   onClear={clearSelection}
                   selection={selection}
                   rightInset={
-                    panelOpen || sessionMode !== "explore"
+                    preparationView || panelOpen || sessionMode !== "explore"
                       ? Math.min(innerWidth * 0.25, 360)
                       : 0
                   }
@@ -1488,7 +1580,7 @@ export default function App() {
             </div>
             <div className="modal-note">
               選取 R1／R2 可操作 12
-              孔洗滌劑槽：點選瓶子或空槽後，可更換、補充或取出。槽位操作中的平日／周／雙周選項只切換允許放置的瓶子，完整日／周保養請由任務中心進入，雙周及障礙排除尚未開放。
+              孔洗滌劑槽：點選瓶子或空槽後，可更換、補充或取出。槽位操作中的平日／周／雙周選項只切換允許放置的瓶子；完整保養與UIBC障礙排除請由任務中心進入。雙周保養尚未開放。
             </div>
           </>
         )}
@@ -1545,6 +1637,22 @@ export default function App() {
           </>
         )}
       </dialog>
+      {preparationView && !examSceneActive && (
+        <div hidden={workstationOpen}>
+          <PreparationPanel
+            disabled={workstationOpen}
+            state={preparationState}
+            gate={preparationAccess}
+            freeSimulation={freePreparationMode}
+            view={preparationView}
+            onView={setPreparationView}
+            feedback={preparationMessage}
+            onClose={() => setPreparationView(null)}
+            onComputer={() => questComputer("Rack Requisition")}
+            onAction={prepare}
+          />
+        </div>
+      )}
       {(["explore", "daily", "weekly"] as const).map((mode) => (
         <Workstation
           key={`${mode}-${workstationEpoch[mode]}`}
@@ -1586,6 +1694,10 @@ export default function App() {
                 }
           }
           onModel={enterModel}
+          onPreparation={() => {
+            setWorkstationOpen(false);
+            setPreparationView("bench");
+          }}
           dailyRequest={workstationNavigation[mode]?.serial || 0}
           requestedRoute={workstationNavigation[mode]?.route || ""}
           guidance={
@@ -1606,7 +1718,11 @@ export default function App() {
         onStart={startTask}
         initialKind={sessionMode === "weekly" ? "weekly" : "daily"}
         hasDraft={(kind) =>
-          kind === "daily" ? dailySession.active : weekly.active
+          kind === "daily"
+            ? dailySession.active
+            : kind === "weekly"
+              ? weekly.active
+              : trouble.active
         }
       />
       <ExamPortal
@@ -1615,6 +1731,18 @@ export default function App() {
         onSceneActive={setExamSceneActive}
         onClose={() => setExamOpen(false)}
       />
+      {troubleOpen && (
+        <TroubleshootingRoom
+          state={trouble.state}
+          feedback={trouble.feedback}
+          onAction={trouble.act}
+          onReset={trouble.reset}
+          onReturn={() => {
+            setTroubleOpen(false);
+            setTaskCenterOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 }

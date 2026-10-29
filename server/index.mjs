@@ -19,6 +19,7 @@ import {
   attemptProgress,
   versionForKind,
   supportsVersion,
+  examPreparationGate,
 } from "../shared/exam.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -135,6 +136,9 @@ export function createApplication({
       submittedAt: row.submitted_at,
       revision: row.revision,
       sim: state.sim,
+      ...(state.sim.preparation
+        ? { preparationAccess: examPreparationGate(state, row.version) }
+        : {}),
       progress: attemptProgress(
         row.kind,
         state,
@@ -504,7 +508,7 @@ export function createApplication({
       }
       if (path === "/api/attempts" && req.method === "POST") {
         const body = await bodyOf(req);
-        if (!["daily", "weekly"].includes(body.kind))
+        if (!["daily", "weekly", "troubleshooting"].includes(body.kind))
           throw httpError(400, "此測驗尚未開放。");
         if (
           db

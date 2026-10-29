@@ -130,4 +130,5 @@ export const dailySteps = [
   ["檢查 syringe 水氣／漏水", "日保養補充與檢查"],
   ["檢查 ISE Standard／Buffer／Reference", "日保養補充與檢查"],
   ["Rack Requisition · Calibration／Serum QC／Urine QC", "Rack Requisition"],
+  ["校正與品管上機", "校正與品管上機"],
 ] as const;

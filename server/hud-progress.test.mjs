@@ -14,6 +14,7 @@ import {
 import {
   legacyDailyV3,
   legacyDailyV4,
+  legacyDailyV5,
   legacyWeeklyV2,
 } from "../shared/dailyScenario.ts";
 import { createApplication } from "./index.mjs";
@@ -26,6 +27,7 @@ test("HUD progress is read-only, version-aware and exactly agrees with existing 
     ["daily", legacyDailyV3],
     ["daily", dailyRubricVersion],
     ["daily", legacyDailyV4],
+    ["daily", legacyDailyV5],
     ["weekly", rubricVersion],
     ["weekly", weeklyRubricVersion],
     ["weekly", legacyWeeklyV2],
@@ -98,7 +100,7 @@ test("active attempt API exposes aggregate progress only and viewing it does not
       password: "Testing123!",
     });
     const { attempt } = await request("/attempts", { kind: "daily" });
-    assert.deepEqual(attempt.progress, { completedGroups: 0, totalGroups: 12 });
+    assert.deepEqual(attempt.progress, { completedGroups: 0, totalGroups: 13 });
     assert.equal(attempt.result, null);
     assert.equal(attempt.events, undefined);
     const viewed = (await request(`/attempts/${attempt.id}`)).attempt;
@@ -113,7 +115,7 @@ test("active attempt API exposes aggregate progress only and viewing it does not
     };
     const saved = (await request(`/attempts/${attempt.id}/events`, event))
       .attempt;
-    assert.deepEqual(saved.progress, { completedGroups: 1, totalGroups: 12 });
+    assert.deepEqual(saved.progress, { completedGroups: 1, totalGroups: 13 });
     assert.deepEqual(Object.keys(saved.progress).sort(), [
       "completedGroups",
       "totalGroups",

@@ -17,6 +17,7 @@ import { dailySteps } from "../shared/dailyTasks";
 import { weeklyStepNames } from "./WeeklyTraining";
 import type { Quest } from "./hudTasks";
 export type TaskKind = "daily" | "weekly";
+export type MissionKind = TaskKind | "troubleshooting";
 export function TaskCenter({
   open,
   onClose,
@@ -26,12 +27,12 @@ export function TaskCenter({
 }: {
   open: boolean;
   onClose: () => void;
-  onStart: (kind: TaskKind, exam: boolean, restart: boolean) => void;
-  hasDraft: (kind: TaskKind) => boolean;
-  initialKind?: TaskKind;
+  onStart: (kind: MissionKind, exam: boolean, restart: boolean) => void;
+  hasDraft: (kind: MissionKind) => boolean;
+  initialKind?: MissionKind;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [kind, setKind] = useState<TaskKind>("daily"),
+  const [kind, setKind] = useState<MissionKind>("daily"),
     [exam, setExam] = useState(false),
     [confirm, setConfirm] = useState(false);
   useEffect(() => {
@@ -67,10 +68,16 @@ export function TaskCenter({
           <button
             key={name}
             className="mission-tile"
-            disabled={i > 1}
-            aria-pressed={i < 2 && kind === (i === 0 ? "daily" : "weekly")}
+            disabled={i === 2}
+            aria-pressed={
+              i !== 2 &&
+              kind ===
+                (i === 0 ? "daily" : i === 1 ? "weekly" : "troubleshooting")
+            }
             onClick={() => {
-              setKind(i === 0 ? "daily" : "weekly");
+              setKind(
+                i === 0 ? "daily" : i === 1 ? "weekly" : "troubleshooting",
+              );
               setConfirm(false);
             }}
           >
@@ -85,7 +92,9 @@ export function TaskCenter({
             <p>
               {i < 2
                 ? `${i === 0 ? dailySteps.length : weeklyStepNames.length} 組既有保養任務`
-                : "尚未開放"}
+                : i === 3
+                  ? "UIBC 品管異常：從判讀到回溯 · 12步"
+                  : "尚未開放"}
             </p>
           </button>
         ))}
@@ -103,7 +112,9 @@ export function TaskCenter({
       <p className="mission-summary">
         {kind === "daily"
           ? "日保養：依既有依賴完成溫度、Index、探針、ISE、試劑與補充檢查及 Rack 登記。清單編號不代表固定順序。"
-          : "周保養：沿用既有拆洗、孔洞清潔、W2、Photocal 與最後配置復原流程。"}
+          : kind === "weekly"
+            ? "周保養：沿用既有拆洗、孔洞清潔、W2、Photocal 與最後配置復原流程。"
+            : "UIBC品管異常：審核判讀、原杯重測、材料與校正、兩濃度QC、回溯及填報呈送。"}
       </p>
       {confirm ? (
         <section

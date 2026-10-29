@@ -164,7 +164,7 @@ test("precise selections reset albums and match printed bank numbers without adv
     await page.getByTestId(`slot-${slot}`).click();
     await photo(page, file);
   }
-  await expect(log).toContainText("0／12");
+  await expect(log).toContainText("0／13");
   mkdirSync("artifacts/real-photos", { recursive: true });
   await page.screenshot({
     path: `artifacts/real-photos/${info.project.name}-r2-slot.png`,

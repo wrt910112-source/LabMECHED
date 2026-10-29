@@ -21,7 +21,15 @@ import {
   validProbeDiag,
   canRunIseProgram,
 } from "../shared/dailyScenario";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  initialPreparation,
+  preparationGate,
+  preparationProgress,
+  applyPreparation,
+  syncPreparation,
+  type PreparationAction,
+} from "../shared/preparation";
 import "./daily.css";
 import { emptyRack } from "./requisitionData";
 import { dailyProbes } from "../shared/maintenance";
@@ -48,6 +56,7 @@ export function useDailyTraining(
   const extra = tasksReadiness(tasks, bottles);
   const [instrument, setInstrument] = useState(initialInstrument);
   const [rack, setRack] = useState(emptyRack);
+  const [rawPreparation, setPreparation] = useState(initialPreparation);
   const [active, setActive] = useState(false);
   const [temp, setTemp] = useState({ bath: "", coolant: "", saved: false });
   const [editing, setEditing] = useState(false),
@@ -163,7 +172,7 @@ export function useDailyTraining(
     extra.suppliesReady &&
     extra.syringesReady &&
     extra.iseReady;
-  const completed = [
+  const maintenanceCompleted = [
     ...rules.beforeRack,
     extra.suppliesReady,
     extra.syringesReady,
@@ -175,8 +184,28 @@ export function useDailyTraining(
       rack.Serum.qc.length > 0 &&
       rack.Urine.qc.length > 0,
   ];
+  const loadingGate = preparationGate(
+    maintenanceCompleted.every(Boolean),
+    rack,
+    index,
+  );
+  const preparation = syncPreparation(
+    structuredClone(rawPreparation),
+    loadingGate,
+  );
+  const loadingProgress = preparationProgress(preparation, loadingGate);
+  useEffect(() => {
+    setPreparation((s) => syncPreparation(structuredClone(s), loadingGate));
+  }, [loadingGate.ready, loadingGate.token]);
+  function prepare(command: PreparationAction) {
+    const result = applyPreparation(preparation, command, loadingGate);
+    setPreparation(result.state);
+    return result.error;
+  }
+  const completed = [...maintenanceCompleted, loadingProgress.done];
   const stage = completed.findIndex((v) => !v);
   function reset() {
+    setPreparation(initialPreparation());
     setTasks(initialDailyTasks());
     setBottles(initialBottles());
     setInstrument(initialInstrument());
@@ -288,6 +317,10 @@ export function useDailyTraining(
     }
   }
   return {
+    preparation,
+    loadingGate,
+    loadingProgress,
+    prepare,
     iseDiag,
     iseDrainValid,
     saveIseDiag,
@@ -358,8 +391,9 @@ export function DailyOverview({
         清單編號供核對，非固定操作順序。擦拭後才檢查排水；Cleaning 後才
         Prime；Cleaning 與三次 Prime
         完成後才校正。試劑可隨時補充；其他項目全數完成後才可進行 Rack
-        Requisition。進度保留至重新整理；最後一組需 Entry 儲存
-        Calibration、Serum QC 與 Urine QC。申請登記不代表已完成量測。
+        Requisition。進度保留至重新整理；Rack 登記需 Entry 儲存
+        Calibration、Serum QC 與 Urine QC，完成後開放第十三組備料上機。
+        申請登記與上機操作均不代表已完成量測。
       </p>
       <button onClick={d.reset}>
         {d.active ? "重設並開始新一輪日保養" : "開始日保養"}
@@ -376,7 +410,9 @@ export function DailyOverview({
             </span>
             <button
               disabled={
-                !d.active || (route === "Rack Requisition" && !d.rackReady)
+                !d.active ||
+                (route === "Rack Requisition" && !d.rackReady) ||
+                (route === "校正與品管上機" && !d.loadingGate.ready)
               }
               onClick={() => go(route)}
             >

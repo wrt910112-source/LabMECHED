@@ -1,10 +1,11 @@
+import { fillPreparationUI, preparationShot } from "./preparation-ui";
 import { instrument, closeProgram, cups, iseDrain, replaceAll } from "./ui";
 import { prepareDailyTasks } from "./daily-fixture";
 import { test, expect } from "@playwright/test";
 test("daily maintenance sequence, prerequisites, six probes, calibration and paired reagents", async ({
   page,
 }, info) => {
-  test.setTimeout(120000);
+  test.setTimeout(240000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
@@ -117,11 +118,11 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   await expect(screen.locator(".daily-steps")).toContainText(
     "Rack Requisition",
   );
-  await expect(screen.locator(".ws-session-hud")).toContainText("11／12");
+  await expect(screen.locator(".ws-session-hud")).toContainText("11／13");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "部件目錄", exact: true }).click();
   await page.getByTestId("part-console").click();
-  await expect(screen.locator(".ws-session-hud")).toContainText("11／12");
+  await expect(screen.locator(".ws-session-hud")).toContainText("11／13");
   await home("Rack Requisition");
   await button("Calibration").click();
   await button("Start Entry").click();
@@ -140,7 +141,50 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   await qc.getByRole("button", { name: "5.URINE QC", exact: true }).click();
   await qc.getByRole("button", { name: "OK", exact: true }).click();
   await button("Entry").click();
-  await expect(screen.locator(".ws-session-hud")).toContainText("12／12");
+  await expect(screen.locator(".ws-session-hud")).toContainText("12／13");
+  await button("退出螢幕 ×").click();
+  await page.getByRole("button", { name: "備料工作台", exact: true }).click();
+  await fillPreparationUI(
+    page,
+    false,
+    async (i) => {
+      if (i === 15)
+        await preparationShot(page, "practice-racked", info.project.name);
+      if (i === 2) {
+        const prep = page.getByRole("region", {
+          name: "校正與品管備料",
+          exact: true,
+        });
+        const canvas = await page.getByTestId("model-canvas").elementHandle();
+        await prep
+          .getByRole("button", { name: "查看 Rack Requisition", exact: true })
+          .click();
+        await expect(screen).toBeVisible();
+        await button("退出螢幕 ×").click();
+        await expect(prep.getByLabel("備料容器", { exact: true })).toHaveValue(
+          "cup-3",
+        );
+        expect(await canvas?.evaluate((el) => el.isConnected)).toBe(true);
+      }
+    },
+    0,
+    async (i) => {
+      if (i === 1)
+        await preparationShot(page, "practice-dispensing", info.project.name);
+    },
+  );
+  await preparationShot(page, "practice-loaded", info.project.name);
+  const prep = page.getByRole("region", {
+    name: "校正與品管備料",
+    exact: true,
+  });
+  await expect(prep).toContainText("本組上機操作完成");
+  await prep.getByRole("button", { name: "返回儀器", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "練習任務紀錄" }),
+  ).toContainText("13／13");
+  await page.getByRole("button", { name: "部件目錄", exact: true }).click();
+  await page.getByTestId("part-console").click();
   await page.screenshot({
     path: `test-results/${info.project.name}-hud-daily-complete.png`,
   });
@@ -150,6 +194,6 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   await page.getByRole("button", { name: "確認重新開始", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "練習任務紀錄" }),
-  ).toContainText("0／12");
+  ).toContainText("0／13");
   expect(errors).toEqual([]);
 });

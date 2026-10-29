@@ -1,4 +1,23 @@
 import {
+  initialTroubleshooting,
+  advanceTroubleshooting,
+  applyTroubleshooting,
+  troubleChecks,
+  troubleVersion,
+  type TroubleState,
+  type TroubleAction,
+} from "./troubleshooting.ts";
+import {
+  initialPreparation,
+  applyPreparation,
+  preparationProgress,
+  preparationGate,
+  syncPreparation,
+  type PreparationState,
+  type PreparationAction,
+} from "./preparation.ts";
+import { hasPreparation, legacyDailyV5 } from "./dailyScenario.ts";
+import {
   initialDailyTasks,
   tasksReadiness,
   supplyIds,
@@ -64,18 +83,30 @@ export const rubricVersion = "AU5800-2026-10-v1";
 export const weeklyRubricVersion = currentWeeklyVersion;
 export const previousDailyRubricVersion = "AU5800-2026-10-21-v2";
 export const dailyRubricVersion = currentDailyVersion;
-export type ExamKind = "daily" | "weekly";
+export type ExamKind = "daily" | "weekly" | "troubleshooting";
 export const versionForKind = (kind: ExamKind) =>
-  kind === "daily" ? dailyRubricVersion : weeklyRubricVersion;
+  kind === "daily"
+    ? dailyRubricVersion
+    : kind === "weekly"
+      ? weeklyRubricVersion
+      : troubleVersion;
 export const supportsVersion = (kind: ExamKind, version: string) =>
   version === versionForKind(kind) ||
-  version === rubricVersion ||
-  (kind === "daily" &&
-    [previousDailyRubricVersion, legacyDailyV3, legacyDailyV4].includes(
-      version,
-    )) ||
-  (kind === "weekly" && version === legacyWeeklyV2);
-export const kindNames = { daily: "日保養", weekly: "周保養" };
+  (kind !== "troubleshooting" &&
+    (version === rubricVersion ||
+      (kind === "daily" &&
+        [
+          previousDailyRubricVersion,
+          legacyDailyV3,
+          legacyDailyV4,
+          legacyDailyV5,
+        ].includes(version)) ||
+      (kind === "weekly" && version === legacyWeeklyV2)));
+export const kindNames = {
+  daily: "日保養",
+  weekly: "周保養",
+  troubleshooting: "UIBC 品管異常：從判讀到回溯",
+};
 export type User = {
   id: string;
   username: string;
@@ -123,7 +154,9 @@ export type ActionType =
   | "reagent"
   | "reagent-check"
   | "rack"
-  | "rack-qc-entry";
+  | "rack-qc-entry"
+  | "preparation"
+  | "troubleshooting";
 export interface ExamCommand {
   type: ActionType;
   target?: string;
@@ -139,6 +172,8 @@ export interface ProbeState {
   operation: string;
 }
 export interface Simulation {
+  troubleshooting?: TroubleState;
+  preparation?: PreparationState;
   dailyTasks?: DailyTasksState;
   instrument?: InstrumentState;
   maintenance: boolean;
@@ -236,6 +271,7 @@ export interface ExamResult {
   badges: string[];
 }
 export interface Attempt {
+  preparationAccess?: ReturnType<typeof preparationGate>;
   id: string;
   userId: string;
   kind: ExamKind;
@@ -258,6 +294,10 @@ export function initialEngine(version = dailyRubricVersion): EngineState {
     skippedMs: 0,
     waitStarted: 0,
     sim: {
+      ...(version === troubleVersion
+        ? { troubleshooting: initialTroubleshooting() }
+        : {}),
+      ...(hasPreparation(version) ? { preparation: initialPreparation() } : {}),
       ...(hasDailyTasks(version) ? { dailyTasks: initialDailyTasks() } : {}),
       ...(hasModernDaily(version) || hasWeeklyHardware(version)
         ? { instrument: initialInstrument() }
@@ -321,6 +361,8 @@ export function initialEngine(version = dailyRubricVersion): EngineState {
 export function advanceEngine(input: EngineState, now: number): EngineState {
   const state = structuredClone(input),
     s = state.sim;
+  if (s.troubleshooting)
+    s.troubleshooting = advanceTroubleshooting(s.troubleshooting, now);
   if (s.batch && now >= s.batch + 2400) {
     s.mixers = [
       ...new Set([
@@ -354,7 +396,7 @@ export function advanceEngine(input: EngineState, now: number): EngineState {
   return state;
 }
 const add = (xs: string[], id: string) => (xs.includes(id) ? xs : [...xs, id]);
-export function applyCommand(
+function applyBaseCommand(
   input: EngineState,
   kind: ExamKind,
   c: ExamCommand,
@@ -424,6 +466,7 @@ export function applyCommand(
     "reagent-check",
     "rack",
     "rack-qc-entry",
+    "preparation",
   ];
   const weeklyTypes = [
     "prepared",
@@ -455,6 +498,26 @@ export function applyCommand(
   )
     return fail("此操作不屬於本次保養測驗");
   switch (c.type) {
+    case "preparation": {
+      if (kind !== "daily" || !hasPreparation(version) || !s.preparation)
+        return fail("此版本尚未開放備料操作。");
+      if (busy) return fail("儀器運轉中，請稍候。");
+      const action = data as unknown as PreparationAction;
+      const result = applyPreparation(
+        s.preparation,
+        action,
+        examPreparationGate(state, version),
+      );
+      s.preparation = result.state;
+      out.label = `備料 ${String(action.action)}`;
+      if (result.error) {
+        const rejected = fail(result.error);
+        rejected.message = result.error;
+        return rejected;
+      }
+      out.message = "備料操作已保存。身份、劑量與正式架位核對狀態維持原紀錄。";
+      break;
+    }
     case "maintenance":
       if (!bool()) return fail("無效保養設定");
       if (busy)
@@ -1265,6 +1328,68 @@ export function applyCommand(
   return out;
 }
 
+export function examPreparationGate(state: EngineState, version: string) {
+  const s = state.sim,
+    needs = calibrationNeeds(s.reagents);
+  return preparationGate(
+    hasPreparation(version) &&
+      dailyExamReadiness(state, version).rackReady &&
+      !!state.ledger.calEntry &&
+      needs.rb.every((id) => s.rack.Serum.rb.includes(id)) &&
+      needs.cal.every((id) => s.rack.Serum.cal.includes(id)) &&
+      s.rack.Serum.qc.length > 0 &&
+      s.rack.Urine.qc.length > 0,
+    s.rack,
+    s.index,
+  );
+}
+export function applyCommand(
+  input: EngineState,
+  kind: ExamKind,
+  c: ExamCommand,
+  now: number,
+  version = versionForKind(kind),
+): ActionOutcome {
+  if (kind === "troubleshooting") {
+    const state = advanceEngine(input, now);
+    if (
+      version !== troubleVersion ||
+      !state.sim.troubleshooting ||
+      c.type !== "troubleshooting"
+    )
+      return {
+        state,
+        error: "此操作不屬於本情境",
+        message: "操作未執行。",
+        accepted: false,
+        label: c.type,
+      };
+    const result = applyTroubleshooting(
+      state.sim.troubleshooting,
+      (c.data || {}) as unknown as TroubleAction,
+      now,
+    );
+    state.sim.troubleshooting = result.state;
+    return {
+      state,
+      error: result.error,
+      message: result.error
+        ? /UIBC.*校正|模擬執行中|已呈送/.test(result.error)
+          ? result.error
+          : "操作已記錄，請自行核對本次作業。"
+        : "操作已保存。",
+      accepted: result.accepted,
+      label: result.label,
+    };
+  }
+  const out = applyBaseCommand(input, kind, c, now, version);
+  if (kind === "daily" && hasPreparation(version) && out.state.sim.preparation)
+    syncPreparation(
+      out.state.sim.preparation,
+      examPreparationGate(out.state, version),
+    );
+  return out;
+}
 export function dailyExamReadiness(state: EngineState, version: string) {
   const s = state.sim,
     revised = version !== rubricVersion;
@@ -1327,6 +1452,24 @@ export function attemptChecks(
     critical = false,
     suggestion = `依 SOP 完成「${label}」後再檢查。`,
   ): CheckItem => ({ id, label, completed: !!completed, critical, suggestion });
+  if (kind === "troubleshooting") {
+    if (s.troubleshooting)
+      for (const check of troubleChecks(s.troubleshooting))
+        group(
+          check.id,
+          check.label,
+          check.flags.map((value, i) =>
+            item(
+              `${check.id}-${i}`,
+              `${check.label}／操作證據 ${i + 1}`,
+              value,
+              false,
+              `核對「${check.label}」的操作與保存紀錄。`,
+            ),
+          ),
+        );
+    return groups;
+  }
   if (kind === "daily") {
     const revised = version !== rubricVersion;
     const rules = dailyExamReadiness(state, version);
@@ -1474,6 +1617,21 @@ export function attemptChecks(
         s.rack.Urine.qc.length > 0 && (!revised || rules.rackReady),
       ),
     ]);
+    if (hasPreparation(version) && s.preparation) {
+      const progress = preparationProgress(
+        s.preparation,
+        examPreparationGate(state, version),
+      );
+      group(
+        "preparation",
+        "校正與品管上機（固定情境操作流程表現）",
+        progress.items.flatMap((r) => [
+          item(`prep-${r.id}-dispensed`, `${r.label} 分裝操作`, r.dispensed),
+          item(`prep-${r.id}-racked`, `${r.label} 同色教學架裝架`, r.racked),
+          item(`prep-${r.id}-loaded`, `${r.label} 推入上機`, r.loaded),
+        ]),
+      );
+    }
   } else {
     group("ready", "準備與四支 syringe", [
       item("prepared", "預熱／待機與工具準備確認", s.prepared),
@@ -1683,6 +1841,8 @@ export function scoreAttempt(
           "diag",
           "diag-config",
           "index-edit",
+          "preparation",
+          "troubleshooting",
         ].includes(e.command.type),
     )
     .forEach((e) => {

@@ -62,13 +62,13 @@ test("task center and practice retain true progress and isolate exploration", as
   await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await expect(page.locator(".mission-tile")).toHaveCount(4);
   await expect(page.locator(".mission-tile").nth(2)).toBeDisabled();
-  await expect(page.locator(".mission-tile").nth(3)).toBeDisabled();
+  await expect(page.locator(".mission-tile").nth(3)).toBeEnabled();
   await page.screenshot({
     path: `test-results/${info.project.name}-hud-task-center.png`,
   });
   await page.getByRole("button", { name: "開始練習", exact: true }).click();
   const log = page.getByRole("region", { name: "練習任務紀錄" });
-  await expect(log).toContainText("0／12");
+  await expect(log).toContainText("0／13");
   await log.getByRole("button", { name: "定位目前目標", exact: true }).click();
   const ws = page.locator(".workstation");
   await expect(ws).toBeVisible();
@@ -80,7 +80,7 @@ test("task center and practice retain true progress and isolate exploration", as
   await ws.getByLabel("Coolant Temp. 登記").fill("22");
   await ws.getByRole("button", { name: "儲存溫度紀錄", exact: true }).click();
   await ws.getByRole("button", { name: "退出螢幕 ×", exact: true }).click();
-  await expect(log).toContainText("1／12");
+  await expect(log).toContainText("1／13");
   await page.screenshot({
     path: `test-results/${info.project.name}-hud-practice.png`,
   });
@@ -92,7 +92,7 @@ test("task center and practice retain true progress and isolate exploration", as
   await page.getByTestId("context-ise-middle").click();
   await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await page.getByRole("button", { name: "繼續練習", exact: true }).click();
-  await expect(log).toContainText("1／12");
+  await expect(log).toContainText("1／13");
   await expect(page.locator(".viewer-host")).toHaveAttribute(
     "data-ise-middle",
     "false",
@@ -157,11 +157,11 @@ test("selection, panel wheel and drag do not move the camera or advance tasks", 
   await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await page.getByRole("button", { name: "開始練習", exact: true }).click();
   const log = page.getByRole("region", { name: "練習任務紀錄" });
-  await expect(log).toContainText("0／12");
+  await expect(log).toContainText("0／13");
   await page.getByRole("button", { name: "部件目錄", exact: true }).click();
   await page.locator(".directory-targets summary").click();
   await page.getByTestId("target-R1-1").click();
-  await expect(log).toContainText("0／12");
+  await expect(log).toContainText("0／13");
   await expect(
     page.getByRole("button", { name: "用酒精棉擦拭 R1-1", exact: true }),
   ).toBeDisabled();
@@ -212,7 +212,7 @@ test("weekly guidance respects parallel tasks, prerequisites and separate practi
   );
   await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await page.getByRole("button", { name: "開始練習", exact: true }).click();
-  await expect(log).toContainText("0／12");
+  await expect(log).toContainText("0／13");
   await expect(page.locator(".viewer-host")).toHaveAttribute(
     "data-internal",
     "false",

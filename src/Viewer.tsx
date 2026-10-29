@@ -15,6 +15,23 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { createInstrument } from "./model";
 import { partById, type PartId, type Vec3 } from "./data";
 import { slotById, type BottleStates } from "./detergents";
+import {
+  createPreparationModel,
+  preparationViews,
+  type PreparationView,
+} from "./preparationModel";
+import type { PreparationState, PreparationGate } from "../shared/preparation";
+import type { Material } from "../shared/materialCatalog";
+import type { TroubleState } from "../shared/troubleshooting";
+import { createTroubleshootingModel } from "./troubleshootingModel";
+export interface PreparationVisual {
+  state: PreparationState;
+  gate: PreparationGate;
+  view: PreparationView;
+  exam: boolean;
+  freeSimulation?: boolean;
+  materials?: Material[];
+}
 
 export interface CameraRequest {
   eye: Vec3;
@@ -30,6 +47,11 @@ export interface SceneSelection {
   weeklyId?: string;
 }
 interface Props {
+  troubleshooting?: TroubleState;
+  troubleSelection?: string | null;
+  onTroubleSelect?: (id: string) => void;
+  preparation?: PreparationVisual;
+  onPreparationSelect?: (id: string) => void;
   onInspect?: (selection: SceneSelection) => void;
   onClear?: () => void;
   selection?: SceneSelection | null;
@@ -59,6 +81,8 @@ interface Props {
   onSlot: (id: string) => void;
 }
 type Engine = {
+  troubleshooting: (state?: TroubleState) => void;
+  preparation: (p?: PreparationVisual) => void;
   doors: (s: DoorState) => void;
   ise: (state: IseState) => void;
   focus: (r: CameraRequest) => void;
@@ -103,7 +127,7 @@ export default function Viewer(props: Props) {
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !current.current.troubleshooting;
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
     renderer.toneMapping = T.ACESFilmicToneMapping;
@@ -156,6 +180,8 @@ export default function Viewer(props: Props) {
     const dailyModel = createDailyModel(instrument.root);
     const weeklyModel = createWeeklyModel(instrument.root);
     scene.add(instrument.root);
+    const troubleModel = createTroubleshootingModel(instrument.root);
+    let bench: ReturnType<typeof createPreparationModel> | null = null;
     // Materials are independent per mesh so selection never leaks into another part.
     instrument.root.traverse((o) => {
       if (o instanceof T.Mesh) {
@@ -168,6 +194,14 @@ export default function Viewer(props: Props) {
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     const outline = new OutlinePass(new T.Vector2(1, 1), scene, camera);
+    outline.enabled = !current.current.troubleshooting;
+    const selectionBox = new T.BoxHelper(instrument.root, 0x6bd8ec);
+    selectionBox.visible = false;
+    scene.add(selectionBox);
+    const setCaseSelection = (object?: T.Object3D | null) => {
+      selectionBox.visible = !!current.current.troubleshooting && !!object;
+      if (selectionBox.visible && object) selectionBox.setFromObject(object);
+    };
     outline.visibleEdgeColor.set("#6bd8ec");
     outline.hiddenEdgeColor.set("#315368");
     outline.edgeStrength = 3;
@@ -177,7 +211,8 @@ export default function Viewer(props: Props) {
     composer.addPass(new OutputPass());
     let drawUntil = performance.now() + 2400;
     const invalidate = () => {
-      drawUntil = performance.now() + 2400;
+      drawUntil =
+        performance.now() + (current.current.troubleshooting ? 120 : 2400);
     };
     let fromEye = camera.position.clone(),
       fromTarget = controls.target.clone(),
@@ -206,6 +241,7 @@ export default function Viewer(props: Props) {
       slot?: string | null,
       selection?: SceneSelection | null,
     ) => {
+      if (current.current.preparation) return;
       const precise = selection?.objectId
         ? instrument.root.getObjectByProperty("uuid", selection.objectId)
         : undefined;
@@ -226,7 +262,72 @@ export default function Viewer(props: Props) {
       outline.selectedObjects = id === "overview" ? [] : target ? [target] : [];
       invalidate();
     };
+    let sceneMode = "instrument";
+    const cameraMemory = new Map<
+      string,
+      { eye: T.Vector3; target: T.Vector3 }
+    >();
     engine.current = {
+      troubleshooting: (state) => {
+        troubleModel.update(state);
+        const selected = current.current.troubleSelection;
+        if (selected)
+          outline.selectedObjects = [
+            troubleModel.targets.get(selected)!,
+          ].filter(Boolean);
+        if (selected) setCaseSelection(troubleModel.targets.get(selected));
+        invalidate();
+      },
+      preparation: (p) => {
+        const next = p?.view || "instrument";
+        if (next !== sceneMode) {
+          cameraMemory.set(sceneMode, {
+            eye: camera.position.clone(),
+            target: controls.target.clone(),
+          });
+          const saved = cameraMemory.get(next);
+          const preset = p ? preparationViews[p.view] : current.current.request;
+          const dest = saved
+            ? {
+                eye: saved.eye.toArray() as Vec3,
+                target: saved.target.toArray() as Vec3,
+              }
+            : preset;
+          sceneMode = next;
+          focus({ ...dest, serial: 0 });
+        }
+        if (p && !bench) {
+          bench = createPreparationModel(p.materials);
+          scene.add(bench.root);
+        }
+        if (bench) bench.root.visible = !!p;
+        // Replace the loader's static example tubes with this scenario's actual cups.
+        instrument.groups.get("loader")?.traverse((object) => {
+          if (/^(rack-\d-\d|tube-(?:cap-)?\d-\d-\d+)$/.test(object.name))
+            object.visible = !p;
+        });
+        if (p && bench) {
+          bench.update(p.state, p.gate, !p.exam && !p.freeSimulation);
+          const object = p.state.selection
+            ? bench.targets.get(p.state.selection)
+            : undefined;
+          const reagent = current.current.troubleSelection
+            ? troubleModel.targets.get(current.current.troubleSelection)
+            : null;
+          outline.selectedObjects = reagent
+            ? [reagent]
+            : object
+              ? [object]
+              : [];
+          setCaseSelection(reagent || object);
+        } else
+          select(
+            current.current.selected,
+            current.current.selectedSlot,
+            current.current.selection,
+          );
+        invalidate();
+      },
       doors: (s) => {
         instrument.enclosures.setState(s);
       },
@@ -334,6 +435,19 @@ export default function Viewer(props: Props) {
     const pointerMove = (e: PointerEvent) => {
       if (e.buttons && Math.hypot(e.clientX - downX, e.clientY - downY) > 5)
         dragging = true;
+      if (current.current.preparation) {
+        hit(e);
+        const picked = dragging
+          ? null
+          : troubleModel.hit(ray) || bench?.hit(ray);
+        setHover(picked?.replace(/^(source|cup|rack|slot):/, "") || null);
+        renderer.domElement.style.cursor = dragging
+          ? "grabbing"
+          : picked
+            ? "pointer"
+            : "grab";
+        return;
+      }
       const id = dragging ? null : hit(e);
       setHover(
         id
@@ -354,6 +468,19 @@ export default function Viewer(props: Props) {
         !dragging &&
         Math.hypot(e.clientX - downX, e.clientY - downY) < 5
       ) {
+        if (current.current.preparation) {
+          hit(e);
+          const reagent = troubleModel.hit(ray);
+          if (reagent) {
+            current.current.onTroubleSelect?.(reagent);
+            dragging = false;
+            return;
+          }
+          const picked = bench?.hit(ray);
+          if (picked) current.current.onPreparationSelect?.(picked);
+          dragging = false;
+          return;
+        }
         const id = hit(e);
         if (!id) current.current.onClear?.();
         else if (current.current.onInspect) current.current.onInspect(id);
@@ -411,6 +538,7 @@ export default function Viewer(props: Props) {
         p.guidanceTargets,
         p.practice,
         p.practiceTarget,
+        p.preparation,
       ]);
       if (visual !== lastVisual) {
         lastVisual = visual;
@@ -609,6 +737,8 @@ export default function Viewer(props: Props) {
       textures.forEach((t) => t.dispose());
       env.dispose();
       outline.dispose();
+      selectionBox.geometry.dispose();
+      (selectionBox.material as T.Material).dispose();
       composer.dispose();
       light.shadow.dispose();
       renderer.dispose();
@@ -625,10 +755,25 @@ export default function Viewer(props: Props) {
     [props.selected, props.selectedSlot, props.selection],
   );
   useEffect(() => engine.current?.bottles(props.bottles), [props.bottles]);
+  useEffect(
+    () => engine.current?.troubleshooting(props.troubleshooting),
+    [props.troubleshooting, props.troubleSelection],
+  );
   useEffect(() => engine.current?.doors(props.doorState), [props.doorState]);
   useEffect(() => engine.current?.ise(props.iseState), [props.iseState]);
   useEffect(() => engine.current?.internal(props.internal), [props.internal]);
   useEffect(() => engine.current?.focus(props.request), [props.request]);
+  useEffect(
+    () => engine.current?.preparation(props.preparation),
+    [
+      props.preparation?.state,
+      props.preparation?.view,
+      props.preparation?.gate.ready,
+      props.preparation?.gate.token,
+      props.preparation?.exam,
+      props.preparation?.freeSimulation,
+    ],
+  );
   useEffect(() => engine.current?.inset(), [props.rightInset]);
   const previousZoom = useRef(props.zoom);
   useEffect(() => {
@@ -642,6 +787,7 @@ export default function Viewer(props: Props) {
       ref={host}
       data-camera-request={props.request.serial}
       data-selected={props.selected}
+      data-preparation={!!props.preparation}
       data-internal={props.internal}
       data-ise-top={props.doorState["ise-top"]}
       data-ise-module={props.iseState.open}

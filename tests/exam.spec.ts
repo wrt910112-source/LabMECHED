@@ -1,3 +1,5 @@
+import { fillPreparationUI, preparationShot } from "./preparation-ui";
+import { currentDailyVersion } from "../shared/dailyScenario";
 import { instrument, closeProgram, cups, iseDrain, replaceAll } from "./ui";
 import {
   supplyIds,
@@ -57,10 +59,14 @@ test.afterAll(async () => {
 });
 test.beforeEach(async ({ page }, info) => {
   await page.route("**/api/**", async (route) => {
-    const response = await route.fetch({
-      url: route.request().url().replace("http://127.0.0.1:5173", serverURL),
-    });
-    await route.fulfill({ response });
+    try {
+      const response = await route.fetch({
+        url: route.request().url().replace("http://127.0.0.1:5173", serverURL),
+      });
+      await route.fulfill({ response });
+    } catch (error) {
+      if (!page.isClosed()) throw error;
+    }
   });
   if (info.title.startsWith("teacher setup")) return;
   page.setDefaultTimeout(12000);
@@ -101,9 +107,9 @@ async function login(page: Page, username: string, password = "Testing123!") {
     .locator(".exam-login")
     .getByRole("button", { name: "登入", exact: true })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "選擇保養任務" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "選擇保養任務" })).toBeVisible(
+    { timeout: 12000 },
+  );
 }
 async function command(page: Page, c: unknown, source = "model") {
   return page.evaluate(
@@ -139,9 +145,9 @@ test("teacher setup, learner ownership, empty submission, history and dashboard"
   await page.locator(".exam-login input[name=name]").fill("教學老師");
   await page.locator(".exam-login input[name=password]").fill("Testing123!");
   await page.getByRole("button", { name: "建立教師帳號", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "選擇保養任務" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "選擇保養任務" })).toBeVisible(
+    { timeout: 12000 },
+  );
   await expect(
     page.getByRole("button", { name: "尚未開放", exact: true }).last(),
   ).toBeDisabled();
@@ -175,7 +181,9 @@ test("teacher setup, learner ownership, empty submission, history and dashboard"
     .filter({ has: page.getByRole("heading", { name: "日保養", exact: true }) })
     .getByRole("button", { name: "開始測驗" })
     .click();
-  await expect(page.getByRole("region", { name: "日保養考試" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "日保養考試" })).toBeVisible({
+    timeout: 12000,
+  });
   await expect(page.locator(".exam-room")).not.toContainText("目前步驟");
   await expect(page.locator(".exam-room")).not.toContainText("待完成");
   await page.getByRole("button", { name: "完成", exact: true }).click();
@@ -210,7 +218,7 @@ test("teacher setup, learner ownership, empty submission, history and dashboard"
 test("daily model and native rack/QC controls complete without hints; earliest/latest growth is visible", async ({
   page,
 }, info) => {
-  test.setTimeout(180000);
+  test.setTimeout(300000);
   await login(page, "student2");
   const startDaily = () =>
     page
@@ -553,6 +561,106 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
   await page.screenshot({
     path: `artifacts/workstation-v5/${info.project.name}-v5-exam-qc-completed.png`,
   });
+  await ws.getByRole("button", { name: "退出螢幕 ×", exact: true }).click();
+  await page
+    .locator(".exam-room-toolbar")
+    .getByRole("button", { name: "備料工作台", exact: true })
+    .click();
+  await fillPreparationUI(page, true, async (i) => {
+    if (i !== 0) return;
+    const prep = page.getByRole("region", {
+      name: "校正與品管備料",
+      exact: true,
+    });
+    const started = (
+      await page.evaluate(
+        async () =>
+          (await (await fetch("/api/attempts/active")).json()).attempt,
+      )
+    ).startedAt;
+    const pick = page.waitForResponse(
+      (r) => r.url().includes("/events") && r.request().method() === "POST",
+    );
+    await prep.getByTestId("prep-source-lcc1").click();
+    await pick;
+    let lost = false;
+    const loseResponse = async (route: import("@playwright/test").Route) => {
+      if (
+        !lost &&
+        route.request().postDataJSON()?.command?.type === "preparation" &&
+        route.request().postDataJSON()?.command?.data?.action === "aspirate"
+      ) {
+        lost = true;
+        await route.fetch({
+          url: route
+            .request()
+            .url()
+            .replace("http://127.0.0.1:5173", serverURL),
+        });
+        await route.abort();
+      } else await route.fallback();
+    };
+    await page.route("**/api/attempts/*/events", loseResponse);
+    await prep.getByRole("button", { name: "吸取來源液", exact: true }).click();
+    await expect(
+      page
+        .locator(".exam-save-status")
+        .getByRole("button", { name: "重試保存", exact: true }),
+    ).toBeVisible();
+    await expect(prep.locator(".prep-controls")).toContainText("移液器：空");
+    const committed = (
+      await page.evaluate(
+        async () =>
+          (await (await fetch("/api/attempts/active")).json()).attempt,
+      )
+    ).revision;
+    await page.unroute("**/api/attempts/*/events", loseResponse);
+    await clickSaved(page, () =>
+      page
+        .locator(".exam-save-status")
+        .getByRole("button", { name: "重試保存", exact: true })
+        .click(),
+    );
+    const retried = await page.evaluate(
+      async () => (await (await fetch("/api/attempts/active")).json()).attempt,
+    );
+    expect(retried.revision).toBe(committed);
+    expect(retried.sim.preparation.pipette.materialId).toBe("lcc1");
+    await page.reload();
+    await page.getByRole("button", { name: "登入／考試", exact: true }).click();
+    await page
+      .locator(".exam-room-toolbar")
+      .getByRole("button", { name: "備料工作台", exact: true })
+      .click();
+    await expect(prep.locator(".prep-controls")).toContainText("LCC1");
+    expect(
+      (
+        await page.evaluate(
+          async () =>
+            (await (await fetch("/api/attempts/active")).json()).attempt,
+        )
+      ).startedAt,
+    ).toBe(started);
+    await expect(
+      page.locator(".exam-room .preparation-hud .prep-hint"),
+    ).toHaveCount(0);
+    await expect(page.locator(".exam-room .guidance-markers span")).toHaveCount(
+      0,
+    );
+    await clickSaved(page, () =>
+      prep.getByRole("button", { name: "清空移液器", exact: true }).click(),
+    );
+    await prep
+      .getByRole("button", { name: "放大材料實機照片", exact: true })
+      .click();
+    await page.keyboard.press("e");
+    await expect(prep.locator(".prep-controls")).toContainText("移液器：空");
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("dialog", { name: "材料實機照片", exact: true }),
+    ).not.toBeVisible();
+  });
+  await preparationShot(page, "exam-loaded", info.project.name);
   await page.getByRole("button", { name: "完成", exact: true }).click();
   await page.getByRole("button", { name: "確認交卷", exact: true }).click();
   await expect(page.locator(".exam-stats")).toContainText("100 / 100");
@@ -636,7 +744,7 @@ test("daily v4 mode buttons are disabled natively and new inspection evidence re
     async () => (await (await fetch("/api/attempts/active")).json()).attempt,
   );
   expect(after.revision).toBe(before.revision);
-  expect(after.version).toBe("AU5800-2026-10-27-v5");
+  expect(after.version).toBe(currentDailyVersion);
   await clickSaved(page, () => instrument(ws, "ISE Maintenance", true));
   await expect(prime).toBeEnabled();
   await expect(cleaning).toBeDisabled();
@@ -664,7 +772,9 @@ test("daily v4 mode buttons are disabled natively and new inspection evidence re
   );
   await page.reload();
   await page.getByRole("button", { name: "登入／考試", exact: true }).click();
-  await expect(page.getByRole("region", { name: "日保養考試" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "日保養考試" })).toBeVisible({
+    timeout: 12000,
+  });
   const restored = await page.evaluate(
     async () => (await (await fetch("/api/attempts/active")).json()).attempt,
   );
@@ -714,7 +824,9 @@ test("weekly model actions, skip support, refresh recovery, neutral restrictions
     );
   await page.reload();
   await page.getByRole("button", { name: "登入／考試", exact: true }).click();
-  await expect(page.getByRole("region", { name: "周保養考試" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "周保養考試" })).toBeVisible({
+    timeout: 12000,
+  });
   const active = await page.evaluate(
     async () => (await (await fetch("/api/attempts/active")).json()).attempt,
   );
@@ -932,9 +1044,9 @@ test("complete weekly run, native W2/Photocal navigation, restoration and repeat
   ).not.toBeChecked();
   await page.getByRole("button", { name: "放棄本次", exact: true }).click();
   await page.getByRole("button", { name: "確認放棄", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "選擇保養任務" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "選擇保養任務" })).toBeVisible(
+    { timeout: 12000 },
+  );
 });
 
 test("HUD exam preserves screen drafts, canvas and time without disclosing answers", async ({
@@ -957,7 +1069,7 @@ test("HUD exam preserves screen drafts, canvas and time without disclosing answe
   const before = await page.evaluate(
     async () => (await (await fetch("/api/attempts/active")).json()).attempt,
   );
-  expect(before.progress).toEqual({ completedGroups: 0, totalGroups: 12 });
+  expect(before.progress).toEqual({ completedGroups: 0, totalGroups: 13 });
   await room
     .getByRole("button", { name: "模型標籤：ISE 模組", exact: true })
     .click();

@@ -1,0 +1,261 @@
+.preparation-hud {
+  position: fixed;
+  inset: 80px 0 0;
+  z-index: 32;
+  pointer-events: none;
+  color: #e1eef3;
+  font-size: 13px;
+}
+.prep-top {
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 16px;
+  pointer-events: auto;
+}
+.prep-top strong {
+  margin-right: auto;
+  font-size: 18px;
+}
+.prep-top small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #91b6c4;
+  margin-top: 4px;
+}
+.preparation-hud button,
+.preparation-hud select,
+.preparation-hud input,
+.exam-room .preparation-hud button,
+.exam-room .preparation-hud select,
+.exam-room .preparation-hud input {
+  color: #e1eef3;
+  background: #1c3645;
+  border: 1px solid #486a7a;
+  border-radius: 7px;
+  padding: 9px;
+  cursor: pointer;
+}
+.preparation-hud button:hover:not(:disabled),
+.preparation-hud button[aria-pressed="true"],
+.exam-room .preparation-hud button:hover:not(:disabled),
+.exam-room .preparation-hud button[aria-pressed="true"] {
+  background: #2d6372;
+  border-color: #68ddeb;
+  color: #e7fcff;
+}
+.preparation-hud button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.preparation-hud input,
+.preparation-hud select {
+  width: 100%;
+  min-width: 0;
+  background: #17303e;
+}
+.prep-tabs {
+  display: flex;
+  gap: 5px;
+}
+.prep-tabs button {
+  white-space: nowrap;
+}
+.prep-rail {
+  pointer-events: auto;
+  position: absolute;
+  top: 92px;
+  right: 18px;
+  bottom: 24px;
+  width: 350px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #7ba4b3 #17303e;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+.prep-rail .hud-card {
+  padding: 16px;
+  flex-shrink: 0;
+}
+.prep-rail h2 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+.prep-rail h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.prep-rail small {
+  color: #a4c6d1;
+  font-size: 10px;
+}
+.prep-rail p {
+  line-height: 1.7;
+}
+.prep-warning {
+  color: #f0c572 !important;
+}
+.prep-hint {
+  border-left: 2px solid #6dd7e7;
+  padding-left: 10px;
+  color: #9ceaf1;
+}
+.prep-success {
+  color: #81e9b1;
+}
+.prep-rail details {
+  margin: 12px 0;
+}
+.prep-rail summary {
+  cursor: pointer;
+  color: #c2e7f1;
+}
+.prep-rail ul {
+  padding-left: 18px;
+  line-height: 1.9;
+}
+.prep-rail dt {
+  color: #91c3d2;
+  margin-top: 12px;
+}
+.prep-rail dd {
+  margin: 4px 0;
+  line-height: 1.8;
+}
+.prep-counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.prep-counts span {
+  border: 1px solid #385463;
+  border-radius: 7px;
+  padding: 8px;
+  color: #a6c6d3;
+}
+.prep-counts b {
+  display: block;
+  margin-top: 6px;
+  color: #e8f6fa;
+  font-size: 18px;
+}
+.prep-progress progress {
+  width: 100%;
+  accent-color: #60e1ec;
+  margin-top: 12px;
+}
+.prep-controls label,
+.prep-catalog label,
+.exam-room .preparation-hud label {
+  display: block;
+  margin: 10px 0;
+  color: #a9c8d5;
+}
+.prep-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 12px 0;
+}
+.prep-material figure {
+  margin: 10px 0;
+}
+.prep-material h3 button {
+  width: 100%;
+  text-align: left;
+}
+.prep-material figure button {
+  padding: 0;
+  width: 100%;
+}
+.prep-material img {
+  width: 100%;
+  height: 190px;
+  object-fit: contain;
+  background: #0e202b;
+}
+.prep-material figcaption {
+  color: #a0bdcb;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.prep-source-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 340px;
+  overflow: auto;
+}
+.prep-source-list button {
+  text-align: left;
+}
+.prep-source-list small {
+  display: block;
+  margin-top: 5px;
+}
+.viewer-host[data-preparation="true"] .scene-markers,
+.viewer-host[data-preparation="true"] .practice-markers,
+.viewer-host[data-preparation="true"] .guidance-markers {
+  display: none;
+}
+.simulator-shell[data-preparation="true"] .hud-rail,
+.simulator-shell[data-preparation="true"] .view-toolbar,
+.simulator-shell[data-preparation="true"] .label-toggle,
+.simulator-shell[data-preparation="true"] .viewer-caption {
+  visibility: hidden;
+}
+.simulator-shell[data-preparation="true"] .view-tabs,
+.simulator-shell[data-preparation="true"] .stage-caption {
+  visibility: hidden;
+}
+.exam-room[data-preparation="true"] .exam-model-panel,
+.exam-room[data-preparation="true"] .exam-view-tools {
+  visibility: hidden;
+}
+.exam-room .preparation-hud {
+  top: 125px;
+}
+.exam-room[data-preparation="true"] .exam-quest-summary {
+  display: none;
+}
+@media (max-width: 1450px) {
+  .prep-rail {
+    width: 326px;
+  }
+  .prep-top {
+    left: 15px;
+    right: 15px;
+    gap: 7px;
+  }
+  .prep-top strong {
+    font-size: 15px;
+  }
+  .prep-tabs button,
+  .prep-top > button {
+    padding: 8px 7px;
+    font-size: 11px;
+  }
+}
+@media (max-height: 800px) {
+  .prep-top {
+    padding: 8px 12px;
+  }
+  .prep-rail {
+    top: 76px;
+    bottom: 12px;
+  }
+  .prep-rail .hud-card {
+    padding: 13px;
+  }
+  .prep-counts b {
+    font-size: 16px;
+  }
+}

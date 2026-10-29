@@ -18,6 +18,8 @@ import {
 } from "react";
 import { Monitor, Box, Plus, Minus, RotateCcw, Flag } from "lucide-react";
 import Viewer, { type CameraRequest, type SceneSelection } from "./Viewer";
+import PreparationPanel from "./PreparationPanel";
+import type { PreparationView } from "./preparationModel";
 import { api, ApiError } from "./examApi";
 import {
   kindNames,
@@ -132,6 +134,9 @@ export default function ExamRoom({
   } | null>(null);
   const [hasRetry, setHasRetry] = useState(false);
   const [qcSavedVersion, setQcSavedVersion] = useState(0);
+  const [preparationView, setPreparationView] =
+    useState<PreparationView | null>(null);
+  const [rackNavigation, setRackNavigation] = useState(0);
   const accept = useCallback(
     (a: Attempt) => {
       current.current = a;
@@ -423,6 +428,7 @@ export default function ExamRoom({
   return (
     <section
       className="exam-room"
+      data-preparation={!!preparationView}
       aria-label={`${kindNames[attempt.kind]}考試`}
     >
       <header className="exam-room-toolbar" hidden={place === "workstation"}>
@@ -446,6 +452,16 @@ export default function ExamRoom({
           工作站
         </button>
         <div className="exam-toolbar-spacer" />
+        {s.preparation && (
+          <button
+            onClick={() => {
+              setPreparationView("bench");
+              setPlace("model");
+            }}
+          >
+            備料工作台
+          </button>
+        )}
         <button disabled={disabled} onClick={() => setConfirm("abandon")}>
           放棄本次
         </button>
@@ -492,6 +508,26 @@ export default function ExamRoom({
       <div className="exam-model-layout">
         <div className="exam-model-stage model-stage">
           <Viewer
+            preparation={
+              preparationView && s.preparation
+                ? {
+                    state: s.preparation,
+                    gate: attempt.preparationAccess || {
+                      ready: false,
+                      token: "",
+                    },
+                    view: preparationView,
+                    exam: true,
+                  }
+                : undefined
+            }
+            onPreparationSelect={(id) => {
+              if (!disabled)
+                void dispatch({
+                  type: "preparation",
+                  data: { action: "select", target: id },
+                });
+            }}
             suspended={place === "workstation"}
             topInset={125}
             rightInset={panelOpen ? Math.min(innerWidth * 0.25, 360) : 0}
@@ -849,6 +885,25 @@ export default function ExamRoom({
           </button>
         )}
       </div>
+      {preparationView && s.preparation && (
+        <div hidden={place !== "model"}>
+          <PreparationPanel
+            state={s.preparation}
+            gate={attempt.preparationAccess || { ready: false, token: "" }}
+            exam
+            disabled={disabled || place !== "model"}
+            feedback={failure || message}
+            view={preparationView}
+            onView={setPreparationView}
+            onClose={() => setPreparationView(null)}
+            onComputer={() => {
+              setRackNavigation((n) => n + 1);
+              setPlace("workstation");
+            }}
+            onAction={(a) => dispatch({ type: "preparation", data: { ...a } })}
+          />
+        </div>
+      )}
       <div
         className="exam-workstation-overlay"
         tabIndex={-1}
@@ -872,6 +927,7 @@ export default function ExamRoom({
         }}
       >
         <ExamWorkstation
+          rackNavigation={rackNavigation}
           qcSavedVersion={qcSavedVersion}
           sessionHud={
             <>
@@ -895,6 +951,16 @@ export default function ExamRoom({
               <button disabled={disabled} onClick={() => setConfirm("abandon")}>
                 放棄本次
               </button>
+              {s.preparation && (
+                <button
+                  onClick={() => {
+                    setPlace("model");
+                    setPreparationView("bench");
+                  }}
+                >
+                  備料工作台
+                </button>
+              )}
               <button disabled={disabled} onClick={() => setConfirm("submit")}>
                 完成
               </button>
@@ -1491,6 +1557,7 @@ function BottleControls({
 }
 
 function ExamWorkstation({
+  rackNavigation = 0,
   qcSavedVersion,
   sessionHud,
   attempt,
@@ -1499,6 +1566,7 @@ function ExamWorkstation({
   onModel,
   now,
 }: {
+  rackNavigation?: number;
   qcSavedVersion: number;
   sessionHud: ReactNode;
   attempt: Attempt;
@@ -1523,6 +1591,9 @@ function ExamWorkstation({
     setDiag("");
     setNotice("");
   }
+  useEffect(() => {
+    if (rackNavigation) navigate("Rack Requisition");
+  }, [rackNavigation]);
   const ise = page === "ISE Maintenance",
     maintenance = ise || page === "Analyzer Maintenance";
   function action(name: string) {

@@ -46,7 +46,9 @@ export default function Workstation({
   weekly,
   bottles,
   onWeeklyModel,
+  onPreparation,
 }: {
+  onPreparation?: () => void;
   weekly?: Weekly;
   bottles: BottleStates;
   onWeeklyModel: (id: string) => void;
@@ -105,6 +107,10 @@ export default function Workstation({
       marked.forEach((el) => el.classList.remove("hud-control-target"));
   });
   function navigate(next: string) {
+    if (next === "校正與品管上機") {
+      onPreparation?.();
+      return;
+    }
     setW2Open(false);
     setPage(next);
     setTab("Maintenance");
@@ -197,7 +203,7 @@ export default function Workstation({
           {weekly
             ? "周保養練習"
             : daily.active
-              ? `日保養 ${daily.completed.filter(Boolean).length}／12`
+              ? `日保養 ${daily.completed.filter(Boolean).length}／${daily.completed.length}`
               : "自由探索"}
         </span>
         {guidance && <span className="ws-session-target">{guidance}</span>}

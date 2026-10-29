@@ -93,6 +93,8 @@ export function dailyQuests(d: Daily): Quest[] {
     true,
     d.rackReady,
   ];
+  targets.push(["preparation"]);
+  available.push(d.loadingGate.ready);
   const reasons = [
     "",
     "",
@@ -167,6 +169,11 @@ export function dailyQuests(d: Daily): Quest[] {
     ["日保養補充與檢查"],
     ["Rack Requisition", "Calibration", "QC"],
   ];
+  reasons.push("先完成有效的十二組保養及 Rack 登記。");
+  instructions.push(
+    "前往備料工作台：選取來源液、吸取、分裝、同色架裝架，放至進樣區並推入。固定16份獨立教學情境。",
+  );
+  controls.push([]);
   const counts: [number, number][] = [
     [Number(d.temp.saved), 1],
     [Number(!!d.index), 1],
@@ -229,6 +236,7 @@ export function dailyQuests(d: Daily): Quest[] {
       3,
     ],
   ];
+  counts.push([d.loadingProgress.completed, d.loadingProgress.total]);
   return dailySteps.map(([label, route], i) => ({
     id: `daily-${i}`,
     label,
