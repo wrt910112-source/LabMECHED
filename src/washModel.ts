@@ -23,7 +23,7 @@ export function rectangle(w: number, h: number, r: number): T.Shape {
   return s;
 }
 // A deck with real cut-outs: empty slots are recesses, not black marks on top.
-export function analyzerDeckGeometry() {
+export function analyzerDeckGeometry(reagentRecesses = false) {
   const shape = rectangle(1.06, 1.58, 0.012);
   for (const bank of washBanks) {
     if (bank.module === "ise") continue;
@@ -41,6 +41,12 @@ export function analyzerDeckGeometry() {
       });
     shape.holes.push(new T.Path(points));
   }
+  if (reagentRecesses)
+    for (const x of [0.502, 1.038]) {
+      const hole = new T.Path();
+      hole.absarc(x - 0.77, -0.47, 0.204, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+    }
   const geo = new T.ExtrudeGeometry(shape, {
     depth: 0.07,
     bevelEnabled: false,

@@ -161,7 +161,13 @@ export function createPreparationModel(sources: Material[] = materials) {
   });
   const cups = new Map<
     string,
-    { group: T.Group; liquid: T.Mesh; label: T.Mesh; materialId: string | null }
+    {
+      group: T.Group;
+      liquid: T.Mesh;
+      outline: T.LineSegments;
+      label: T.Mesh;
+      materialId: string | null;
+    }
   >();
   for (let i = 0; i < 16; i++) {
     const group = new T.Group();
@@ -172,6 +178,21 @@ export function createPreparationModel(sources: Material[] = materials) {
     );
     wall.position.y = 0.05;
     group.add(wall);
+    const outlineShape = new T.CylinderGeometry(0.049, 0.035, 0.105, 18);
+    const outline = new T.LineSegments(
+      new T.EdgesGeometry(outlineShape, 15),
+      new T.LineBasicMaterial({
+        color: "#ffd700",
+        transparent: true,
+        opacity: 0.9,
+      }),
+    );
+    outlineShape.dispose();
+    outline.name = "filled-cup-gold-outline";
+    outline.position.y = 0.0525;
+    outline.visible = false;
+    // A physical contents marker, independent of identity, rack correctness or guidance.
+    group.add(outline);
     const rim = new T.Mesh(new T.TorusGeometry(0.046, 0.003, 6, 20), metal);
     rim.rotation.x = Math.PI / 2;
     rim.position.y = 0.1;
@@ -190,7 +211,13 @@ export function createPreparationModel(sources: Material[] = materials) {
     label.position.set(0, 0.048, 0.041);
     group.add(label);
     root.add(group);
-    cups.set(`cup-${i + 1}`, { group, liquid, label, materialId: null });
+    cups.set(`cup-${i + 1}`, {
+      group,
+      liquid,
+      outline,
+      label,
+      materialId: null,
+    });
     targets.set(`cup:cup-${i + 1}`, group);
   }
   const pipette = new T.Group();
@@ -247,7 +274,8 @@ export function createPreparationModel(sources: Material[] = materials) {
           3.47 + Math.floor(i / 4) * 0.19,
         );
       }
-      visual.liquid.visible = !!c.materialId;
+      visual.liquid.visible = !!c.materialId && c.additions > 0;
+      visual.outline.visible = visual.liquid.visible;
       if (visual.materialId !== c.materialId) {
         const replacement = caption(
           c.materialId

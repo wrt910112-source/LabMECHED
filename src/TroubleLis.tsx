@@ -10,6 +10,9 @@ import {
   traceAcceptable,
   troubleIdentity,
   readyToSend,
+  isTroubleV2,
+  expectedPhrases,
+  formTextMatches,
   type TroubleState,
   type TroubleAction,
   type FormField,
@@ -54,17 +57,21 @@ export function ResultTable({
             <td>異常濃度</td>
             <td>27091</td>
           </tr>
-          <tr
-            className={selected === "second" ? "selected" : ""}
-            onClick={() => setSelected("second")}
-          >
-            <td>
-              <button onClick={() => setSelected("second")}>第二濃度</button>
-            </td>
-            <td>待設定</td>
-            <td>第二濃度</td>
-            <td>待設定</td>
-          </tr>
+          {(!isTroubleV2(s) || s.runs.final) && (
+            <tr
+              className={selected === "second" ? "selected" : ""}
+              onClick={() => setSelected("second")}
+            >
+              <td>
+                <button onClick={() => setSelected("second")}>
+                  {isTroubleV2(s) ? "MAS-3" : "第二濃度"}
+                </button>
+              </td>
+              <td>待設定</td>
+              <td>第二濃度</td>
+              <td>待設定</td>
+            </tr>
+          )}
         </tbody>
       </table>
       <table aria-label="UIBC 品管結果">
@@ -115,6 +122,7 @@ export function ResultTable({
                       setSelected(r.level === "second" ? "second" : r.id);
                       void act({ action: "review-result", target: r.id });
                     }}
+                    data-guide={`review-${r.id}`}
                     aria-label={`查看結果 ${r.id}`}
                   >
                     查看／核對
@@ -127,7 +135,13 @@ export function ResultTable({
     </div>
   );
 }
-export function LjCharts({ s }: { s: TroubleState }) {
+export function LjCharts({
+  s,
+  act,
+}: {
+  s: TroubleState;
+  act?: TroubleDispatch;
+}) {
   const [selected, setSelected] = useState<TroubleResult | null>(null);
   return (
     <section className="lis-charts" aria-label="QC L-J Chart">
@@ -206,9 +220,21 @@ export function LjCharts({ s }: { s: TroubleState }) {
                       role="button"
                       tabIndex={0}
                       aria-label={`資料點 ${config.label} T${r.order} ${r.value}`}
-                      onClick={() => setSelected(r)}
+                      data-guide={`point-${r.id}`}
+                      onClick={() => {
+                        setSelected(r);
+                        if (isTroubleV2(s))
+                          void act?.({ action: "select-result", target: r.id });
+                      }}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") setSelected(r);
+                        if (e.key === "Enter") {
+                          setSelected(r);
+                          if (isTroubleV2(s))
+                            void act?.({
+                              action: "select-result",
+                              target: r.id,
+                            });
+                        }
                       }}
                     >
                       <rect
@@ -267,7 +293,9 @@ export function LjCharts({ s }: { s: TroubleState }) {
         );
       })}
       <p className="lis-note">
-        相對時序T為模擬執行序。更換品管液後的中間重測未提供數值，保留於表格及操作紀錄，不繪製虛構圖點。
+        {isTroubleV2(s)
+          ? "相對時序T為模擬執行序；僅顯示實際執行後的結果。"
+          : "相對時序T為模擬執行序。更換品管液後的中間重測未提供數值，保留於表格及操作紀錄，不繪製虛構圖點。"}
       </p>
       {selected && (
         <div className="lis-point-detail" role="status">
@@ -290,12 +318,16 @@ export function PhraseEditor({
   busy,
   act,
   onClose,
+  onGuide,
+  practice = false,
 }: {
   field: FormField;
   s: TroubleState;
   busy: boolean;
   act: TroubleDispatch;
   onClose: () => void;
+  onGuide?: (hint: { target: string; text: string } | null) => void;
+  practice?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null),
     [ids, setIds] = useState([...s.form[field].ids]),
@@ -310,6 +342,25 @@ export function PhraseEditor({
   useEffect(() => {
     ref.current?.showModal();
   }, []);
+  useEffect(() => {
+    if (!onGuide || field === "prevention") return;
+    const expected = expectedPhrases[field];
+    const wrong = ids.find((id) => !expected.includes(id));
+    const missing = expected.find((id) => !ids.includes(id));
+    const targetId = wrong || missing;
+    const hint = targetId
+      ? choice !== targetId
+        ? { target: "phrase-choice", text: `選取片語 ${targetId}` }
+        : {
+            target: wrong ? "phrase-remove" : "phrase-add",
+            text: wrong ? "移出不符的片語" : "按 << 移入片語",
+          }
+      : !formTextMatches(s, field, text, [...expected])
+        ? { target: "phrase-text", text: "核對編輯文字，與所選片語一致" }
+        : { target: "phrase-confirm", text: "按確定保存片語" };
+    onGuide(hint);
+  }, [field, ids, text, choice, onGuide]);
+  useEffect(() => () => onGuide?.(null), [onGuide]);
   function add() {
     if (!choice) return;
     const next = [...new Set([...ids, choice])];
@@ -342,6 +393,7 @@ export function PhraseEditor({
         <section>
           <h3>編輯區</h3>
           <textarea
+            data-guide="phrase-text"
             aria-label={`${title}編輯區`}
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -350,10 +402,14 @@ export function PhraseEditor({
           <p>已選：{ids.join("、") || "尚未加入"}</p>
         </section>
         <nav>
-          <button onClick={add} aria-label="加入片語">
+          <button data-guide="phrase-add" onClick={add} aria-label="加入片語">
             &lt;&lt;
           </button>
-          <button onClick={remove} aria-label="移除片語">
+          <button
+            data-guide="phrase-remove"
+            onClick={remove}
+            aria-label="移除片語"
+          >
             &gt;&gt;
           </button>
         </nav>
@@ -361,6 +417,7 @@ export function PhraseEditor({
           <h3>輔助片語</h3>
           <select
             size={9}
+            data-guide="phrase-choice"
             aria-label={`${title}輔助片語`}
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
@@ -374,9 +431,15 @@ export function PhraseEditor({
           </select>
         </section>
       </div>
+      {practice && field !== "prevention" && (
+        <p className="lis-phrase-help" role="note">
+          請選取正確的片語以及操作順序，選取正確者會亮燈提示輸入
+        </p>
+      )}
       <footer>
         <button onClick={onClose}>取消</button>
         <button
+          data-guide="phrase-confirm"
           disabled={busy}
           onClick={async () => {
             if (
@@ -400,11 +463,13 @@ export function IncidentForm({
   busy,
   exam,
   act,
+  onGuide,
 }: {
   s: TroubleState;
   busy: boolean;
   exam: boolean;
   act: TroubleDispatch;
+  onGuide?: (hint: { target: string; text: string } | null) => void;
 }) {
   const [field, setField] = useState<FormField | null>(null),
     locked = busy || s.submission === "sent-awaiting-review";
@@ -443,6 +508,7 @@ export function IncidentForm({
               <h3>
                 {titles[f]}{" "}
                 <button
+                  data-guide={`form-${f}`}
                   aria-label={`開啟${titles[f]}片語`}
                   disabled={locked}
                   onClick={() => setField(f)}
@@ -510,6 +576,7 @@ export function IncidentForm({
         </button>
         <button
           disabled={locked}
+          data-guide="form-submit"
           onClick={() => void act({ action: "submit" })}
         >
           呈送
@@ -525,6 +592,8 @@ export function IncidentForm({
           s={s}
           busy={busy}
           act={act}
+          onGuide={onGuide}
+          practice={!exam}
           onClose={() => setField(null)}
         />
       )}
@@ -536,17 +605,23 @@ export function TraceForm({
   busy,
   act,
   networkFailure,
+  onBrowse,
 }: {
   s: TroubleState;
   busy: boolean;
   act: TroubleDispatch;
   networkFailure: boolean;
+  onBrowse?: (open: boolean) => void;
 }) {
   const [browse, setBrowse] = useState(false),
     status =
       networkFailure && s.report.status !== "success"
         ? "failed"
         : s.report.status;
+  useEffect(() => {
+    onBrowse?.(browse);
+    return () => onBrowse?.(false);
+  }, [browse, onBrowse]);
   return (
     <section className="lis-trace" aria-label="檢體回溯填報">
       <h2>檢體回溯填報｜教學模擬</h2>
@@ -603,6 +678,7 @@ export function TraceForm({
               </td>
               <td>
                 <button
+                  data-guide={`trace-${r.id}`}
                   aria-label={`核對 ${r.id}`}
                   disabled={busy}
                   onClick={() =>
@@ -619,13 +695,18 @@ export function TraceForm({
       <fieldset>
         <legend>回溯報告上傳（本機模擬）</legend>
         <input aria-label="回溯報告檔案" readOnly value={s.report.file || ""} />
-        <button disabled={busy} onClick={() => setBrowse(!browse)}>
+        <button
+          data-guide="report-browse"
+          disabled={busy}
+          onClick={() => setBrowse(!browse)}
+        >
           瀏覽…
         </button>
         {browse && (
           <div className="lis-file-picker">
             <p>本機教學附件，不含真實病患資料。</p>
             <button
+              data-guide="report-file"
               onClick={async () => {
                 if (
                   await act({
@@ -660,6 +741,7 @@ export function TraceForm({
         </p>
         <button
           disabled={busy || s.report.status === "success"}
+          data-guide="report-upload"
           onClick={() => void act({ action: "upload" })}
         >
           回溯報告上傳

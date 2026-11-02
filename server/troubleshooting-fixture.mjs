@@ -5,7 +5,7 @@ import {
   advanceTroubleshooting,
 } from "../shared/troubleshooting.ts";
 export function troubleFixture() {
-  let state = initialTroubleshooting(),
+  let state = initialTroubleshooting("AU5800-UIBC-2026-10-29-v1"),
     now = 10000;
   const fixture = {
     get state() {

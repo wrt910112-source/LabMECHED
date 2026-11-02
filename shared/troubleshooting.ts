@@ -8,9 +8,24 @@ import {
 } from "./preparation.ts";
 import { emptyRack, type RackSelection } from "../src/requisitionData.ts";
 
-export const troubleVersion = "AU5800-UIBC-2026-10-29-v1";
+export const legacyTroubleVersion = "AU5800-UIBC-2026-10-29-v1";
+export const previousTroubleVersion = "AU5800-UIBC-2026-10-29-v2";
+export const manualTroubleVersion = "AU5800-UIBC-2026-10-30-v3";
+export const troubleVersion = "AU5800-UIBC-2026-10-30-v4";
+export const troubleVersions = [
+  legacyTroubleVersion,
+  previousTroubleVersion,
+  manualTroubleVersion,
+  troubleVersion,
+];
+export const requiresQcConfirmation = (s: Pick<TroubleState, "version">) =>
+  s.version === troubleVersion;
+export const manualTroubleCheck = (s: Pick<TroubleState, "version">) =>
+  [manualTroubleVersion, troubleVersion].includes(s.version);
+export const isTroubleV2 = (s: Pick<TroubleState, "version">) =>
+  troubleVersions.slice(1).includes(s.version);
 export const troubleTitle = "UIBC 品管異常：從判讀到回溯";
-export const troubleGate = { ready: true, token: troubleVersion };
+export const troubleGate = { ready: true, token: legacyTroubleVersion };
 export const troubleIdentity = {
   instrument: "M229／AU5800",
   test: "UIBC",
@@ -61,6 +76,32 @@ export const troubleMaterials: Material[] = [
 export const troubleCatalog = Object.fromEntries(
   troubleMaterials.map((m) => [m.id, m]),
 );
+export const troubleMaterialsV2: Material[] = [
+  { ...materialById.water, name: "RB／ddH2O" },
+  {
+    ...materialById.lcc1,
+    name: "LCC-1",
+    notes: [
+      ...materialById.lcc1.notes,
+      "本次情境指定；UIBC正式材料對應待確認。",
+    ],
+  },
+  materialById.lcc2,
+  ...troubleMaterials
+    .filter((m) => m.id.startsWith("uibc-"))
+    .map((m) => ({
+      ...m,
+      name: m.id === "uibc-primary" ? "MAS-1" : "MAS-3",
+      notes: [...m.notes, "使用者指定情境別名，不由產品名稱H推定濃度。"],
+    })),
+];
+export const catalogV2 = Object.fromEntries(
+  troubleMaterialsV2.map((m) => [m.id, m]),
+);
+export const gateForTrouble = (s: TroubleState) =>
+  isTroubleV2(s)
+    ? { ready: true, token: `${s.version}:${s.reagent.generation}` }
+    : troubleGate;
 export const traceRows = [
   { id: "P01", original: 322, current: 320 },
   { id: "P02", original: 167, current: 165 },
@@ -147,6 +188,9 @@ type Pair = "R1" | "R2";
 export interface TroubleState {
   version: string;
   seq: number;
+  covers?: Record<"main" | "R1" | "R2", boolean>;
+  selectedResult?: string;
+  nextAction?: string;
   preparation: PreparationState;
   reviewed: string[];
   chartSeen: boolean;
@@ -162,6 +206,7 @@ export interface TroubleState {
     mix: Record<Pair, { source: string | null; mixed: boolean }>;
     slots: Record<Pair, string | null>;
     checked: boolean;
+    updateReviewed?: boolean;
     generation: number;
   };
   calibration: "baseline" | "required" | "running" | "success" | "failed";
@@ -188,9 +233,17 @@ export interface TroubleState {
 export interface TroubleAction {
   action:
     | "view"
+    | "select-result"
+    | "open-original"
+    | "cover"
+    | "batch-entry"
+    | "batch-stage"
+    | "batch-push"
+    | "batch-retrieve"
     | "review-result"
     | "inspect"
     | "confirm-rule"
+    | "confirm-qc"
     | "verify-original"
     | "replace-qc"
     | "preparation"
@@ -202,6 +255,7 @@ export interface TroubleAction {
     | "remove-new"
     | "reset-reagent"
     | "reagent-check"
+    | "review-reagent-update"
     | "rack-entry"
     | "trace-check"
     | "select-report"
@@ -212,9 +266,9 @@ export interface TroubleAction {
   value?: string;
   data?: Record<string, unknown>;
 }
-export function initialTroubleshooting(): TroubleState {
+export function initialTroubleshooting(version = troubleVersion): TroubleState {
   const preparation = initialPreparation();
-  preparation.scenario = troubleVersion;
+  preparation.scenario = version;
   Object.assign(preparation.cups[0], {
     materialId: "uibc-primary",
     concentration: levels.primary.label,
@@ -222,7 +276,14 @@ export function initialTroubleshooting(): TroubleState {
     fillSerial: 1,
   });
   return {
-    version: troubleVersion,
+    version,
+    ...(isTroubleV2({ version })
+      ? {
+          covers: { main: false, R1: false, R2: false },
+          selectedResult: "",
+          nextAction: "",
+        }
+      : {}),
     seq: 0,
     preparation,
     reviewed: [],
@@ -287,6 +348,7 @@ export const aliquotSignature = (c: PreparationState["cups"][number]) =>
   `${c.id}:${c.fillSerial || 0}:${c.materialId}`;
 function invalidate(s: TroubleState) {
   s.reagent.checked = false;
+  if (manualTroubleCheck(s)) s.reagent.updateReviewed = false;
   s.reagent.generation++;
   s.calibration = "required";
   s.qcRecovered = false;
@@ -296,7 +358,9 @@ function invalidate(s: TroubleState) {
   s.runs.final = false;
   // Physical cups stay where the learner put them, but a load performed for
   // an earlier reagent configuration cannot count as a new execution.
-  for (const rack of ["CALI", "QC"] as const)
+  for (const rack of (isTroubleV2(s)
+    ? ["RB", "CALI", "QC"]
+    : ["CALI", "QC"]) as ("RB" | "CALI" | "QC")[])
     s.preparation.racks[rack].loadedToken = null;
 }
 export function chartRows(s: TroubleState, level: Level): TroubleResult[] {
@@ -327,6 +391,13 @@ export function advanceTroubleshooting(
   else if (p.kind === "calibration") {
     s.calibration = p.success ? "success" : "failed";
     s.runs.calibration = p.success;
+    if (isTroubleV2(s) && p.success)
+      s.pending = {
+        kind: "final",
+        due: now + 650,
+        success: true,
+        signatures: p.signatures,
+      };
   } else if (p.success) {
     const order = Math.max(...s.results.map((r) => r.order)) + 1;
     if (p.kind === "original")
@@ -364,6 +435,8 @@ export function advanceTroubleshooting(
           context: "重新校正成功後重新執行 QC",
         });
     s.runs[p.kind] = true;
+    if (isTroubleV2(s) && !requiresQcConfirmation(s) && p.kind === "final")
+      s.qcRecovered = true;
   }
   if (p.success) s.used = [...new Set([...s.used, ...p.signatures])];
   record(
@@ -407,8 +480,26 @@ function correctField(s: TroubleState, field: keyof typeof expectedPhrases) {
   return (
     f.ids.length === ids.length &&
     ids.every((id) => f.ids.includes(id)) &&
-    f.text.trim() === phraseText(field, ids)
+    formTextMatches(s, field, f.text, ids)
   );
+}
+export function formTextMatches(
+  s: TroubleState,
+  field: FormField,
+  text: string,
+  ids: string[],
+) {
+  const canonical = phraseText(field, ids);
+  if (!manualTroubleCheck(s) || field !== "results")
+    return text.trim() === canonical;
+  const lines = (value: string) =>
+    value
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .sort();
+  return JSON.stringify(lines(text)) === JSON.stringify(lines(canonical));
 }
 export function troubleChecks(s: TroubleState) {
   const flags = [
@@ -443,6 +534,25 @@ export function troubleChecks(s: TroubleState) {
     [correctField(s, "results")],
     [s.submission === "sent-awaiting-review"],
   ];
+  if (isTroubleV2(s)) {
+    flags[0] = [s.reviewed.includes("initial"), s.rule13];
+    flags[1] = ["qc", "reagent", "calibration"].map((id) =>
+      s.factors.includes(id),
+    );
+    flags[2] = [!!s.runs.original];
+    flags[3] = [s.rule22];
+    flags[4] = flags[4].slice(2);
+    if (manualTroubleCheck(s))
+      flags[4].push(
+        Object.values(s.covers!).every((open) => !open),
+        !!s.reagent.updateReviewed,
+      );
+    flags[5] = [
+      s.rack.Serum.rb.includes("27.UIBC"),
+      s.rack.Serum.cal.includes("27.UIBC"),
+      s.calibration === "success",
+    ];
+  }
   return troubleStepNames.map((label, i) => ({
     id: `uibc-${i + 1}`,
     label,
@@ -483,6 +593,17 @@ export function applyTroubleshooting(
     Array.isArray(data)
   )
     return fail("無效情境操作");
+  const v2 = isTroubleV2(s);
+  if (a === "select-result" && v2) {
+    const row = [...chartRows(s, "primary"), ...chartRows(s, "second")].find(
+      (r) => r.id === t,
+    );
+    if (!row) return fail("結果尚未產生");
+    s.selectedResult = t;
+    s.reviewed = add(s.reviewed, t);
+    s.chartSeen = true;
+    return done("", `選取結果 ${row.value}`);
+  }
   if (a === "view") {
     if (t === "chart" && s.reviewed.includes("initial")) s.chartSeen = true;
     return done("", `查看 ${t}`);
@@ -497,6 +618,7 @@ export function applyTroubleshooting(
       )
       .slice(-2);
     if (
+      !requiresQcConfirmation(s) &&
       s.calibration === "success" &&
       s.runs.final &&
       finals.length === 2 &&
@@ -514,6 +636,166 @@ export function applyTroubleshooting(
   if (s.submission === "sent-awaiting-review")
     return fail("本次已呈送，待主管審核／允收");
   if (s.pending) return fail("模擬執行中，請稍候");
+  if (requiresQcConfirmation(s) && a === "confirm-qc") {
+    const finals = finalQcAssessment(s);
+    if (!finals || !finals.every((r) => r.accepted))
+      return fail("請先完成校正並實際執行兩濃度 QC，核對允收結果後再確認判讀");
+    if (s.qcRecovered) return done("", "兩濃度 QC 已確認，回溯待完成");
+    for (const r of finals) s.reviewed = add(s.reviewed, r.result.id);
+    s.qcRecovered = true;
+    return done(
+      "",
+      "確認兩濃度 QC 判讀：155、50 均落在本情境允收範圍；QC恢復，回溯待完成。常規病患測試仍暫停",
+    );
+  }
+  if (v2 && a === "cover") {
+    if (!["main", "R1", "R2"].includes(t)) return fail("無效蓋子");
+    if (t !== "main" && !s.covers!.main) return fail("請先打開儀器上蓋");
+    if (
+      manualTroubleCheck(s) &&
+      t === "main" &&
+      c.value === "close" &&
+      (s.covers!.R1 || s.covers!.R2)
+    )
+      return fail("請先蓋回R1、R2上蓋，再蓋儀器上蓋");
+    s.covers![t as "main" | "R1" | "R2"] = c.value === "open";
+    return done("", `${c.value === "open" ? "打開" : "關閉"} ${t} 上蓋`);
+  }
+  if (manualTroubleCheck(s) && a === "reagent-check") {
+    if (!reagentReady(s))
+      return fail("請先取出兩舊瓶，完成兩新瓶配製、混勻及正確放入");
+    if (Object.values(s.covers!).some(Boolean))
+      return fail("請先蓋回R1、R2及儀器上蓋，再執行Reagent Check");
+    s.reagent.checked = true;
+    if (s.calibration !== "success") s.calibration = "required";
+    return done("", "Reagent Check完成；UIBC更新，RB與CALI需校正");
+  }
+  if (manualTroubleCheck(s) && a === "review-reagent-update") {
+    if (!s.reagent.checked || Object.values(s.covers!).some(Boolean))
+      return fail("請先關蓋並完成Reagent Check");
+    s.reagent.updateReviewed = true;
+    return done(
+      "",
+      s.calibration === "success"
+        ? "已檢查UIBC更新：情境校正已完成；未代表主管核准"
+        : "已檢查UIBC試劑更新：RB及CALI需校正",
+    );
+  }
+  if (v2 && a === "open-original") {
+    if (
+      !s.rule13 ||
+      !["qc", "reagent", "calibration"].every((id) => s.factors.includes(id))
+    )
+      return fail("請先完成判讀及三項資料查看");
+    s.originalVerified = true;
+    return done("", "原杯品管液上機：使用原杯MAS-1");
+  }
+  if (v2 && a === "confirm-rule") {
+    if (
+      s.selectedResult === "initial" &&
+      c.value === "1.3S" &&
+      data.followup === "original"
+    ) {
+      s.rule13 = true;
+      s.nextAction = "original";
+    } else if (
+      s.selectedResult === "original" &&
+      s.runs.original &&
+      c.value === "2.2S" &&
+      data.followup === "troubleshoot"
+    ) {
+      s.rule22 = true;
+      s.nextAction = "troubleshoot";
+    } else return fail("判讀或後續處理與選取的結果不符");
+    return done("", `確認判讀 ${c.value}／${s.nextAction}`);
+  }
+  if (
+    v2 &&
+    ["batch-entry", "batch-stage", "batch-push", "batch-retrieve"].includes(a)
+  ) {
+    if (a === "batch-entry") {
+      if (data.type !== undefined && data.type !== "Serum")
+        return fail("本情境UIBC登記使用Serum");
+      const selection = data.selection as RackSelection;
+      if (
+        !selection ||
+        !["rb", "cal", "qc", "sample"].every(
+          (k) =>
+            Array.isArray(selection[k as keyof RackSelection]) &&
+            selection[k as keyof RackSelection].every(
+              (x) => typeof x === "string",
+            ),
+        )
+      )
+        return fail("登記格式無效");
+      s.rack.Serum = structuredClone(selection);
+      return done("", "RB／CALI／QC 同批 Entry（尚未執行）");
+    }
+    const racks = data.racks;
+    if (
+      !Array.isArray(racks) ||
+      racks.length !== 3 ||
+      !["RB", "CALI", "QC"].every((k) => racks.includes(k))
+    )
+      return fail("請選取本次藍、黃、綠三架");
+    if (a === "batch-retrieve") {
+      for (const k of ["RB", "CALI", "QC"] as const)
+        s.preparation.racks[k] = { location: "bench", loadedToken: null };
+      return done("", "取回本次三架");
+    }
+    if (
+      !s.reagent.checked ||
+      !["rb", "cal", "qc"].every((k) =>
+        s.rack.Serum[k as "rb" | "cal" | "qc"].includes("27.UIBC"),
+      )
+    )
+      return fail("請完成試劑更換及UIBC的RB、CALI、QC登記");
+    if (
+      manualTroubleCheck(s) &&
+      (!s.reagent.updateReviewed || Object.values(s.covers!).some(Boolean))
+    )
+      return fail("請關蓋、執行Reagent Check並查看UIBC更新結果");
+    if (a === "batch-push" && s.runs.final)
+      return done("", "此批次已完成，未重複執行");
+    const cups = batchCups(s);
+    if (!cups)
+      return fail(
+        "請備好RB、LCC-1、MAS-1、MAS-3，裝入正確架色並使用新的QC分裝",
+      );
+    if (a === "batch-stage") {
+      if (
+        !["RB", "CALI", "QC"].every(
+          (k) =>
+            s.preparation.racks[k as "RB" | "CALI" | "QC"].location === "bench",
+        )
+      )
+        return fail("請先取回本次三架");
+      for (const k of ["RB", "CALI", "QC"] as const)
+        s.preparation.racks[k].location = "entry";
+      return done("", "三架放至進樣區");
+    }
+    if (s.runs.final) return done("", "此批次已完成，未重複執行");
+    if (
+      !["RB", "CALI", "QC"].every(
+        (k) =>
+          s.preparation.racks[k as "RB" | "CALI" | "QC"].location === "entry",
+      )
+    )
+      return fail("請先將三架放至進樣區");
+    for (const k of ["RB", "CALI", "QC"] as const)
+      s.preparation.racks[k] = {
+        location: "loaded",
+        loadedToken: gateForTrouble(s).token,
+      };
+    s.calibration = "running";
+    s.pending = {
+      kind: "calibration",
+      due: now + (options.durationMs ?? 650),
+      success: options.calibrationOutcome ?? true,
+      signatures: cups.map(aliquotSignature),
+    };
+    return done("", "三架推入；依序執行校正及兩濃度QC");
+  }
   if (a === "confirm-rule") {
     if (c.value === "1.3S" && s.chartSeen && s.reviewed.includes("initial"))
       s.rule13 = true;
@@ -526,6 +808,17 @@ export function applyTroubleshooting(
     else return fail("判讀與目前執行紀錄不符");
     return done("", `確認判讀 ${c.value}`);
   }
+  if (
+    v2 &&
+    [
+      "run",
+      "replace-qc",
+      "verify-original",
+      "rack-entry",
+      "reagent-check",
+    ].includes(a)
+  )
+    return fail("此版本由推入操作自動執行；登記使用同批Entry");
   if (a === "verify-original") {
     if (
       data.test !== "UIBC" ||
@@ -544,10 +837,41 @@ export function applyTroubleshooting(
   if (a === "preparation") {
     const command = data as unknown as PreparationAction;
     if (command.action === "reset") return fail("請從情境入口重新開始本次任務");
-    const result = applyPreparation(s.preparation, command, troubleGate, {
-      catalog: troubleCatalog,
+    if (v2 && command.action === "push" && command.rack !== "QC")
+      return fail("請使用本次三架同批推入");
+    const before = s.preparation;
+    const result = applyPreparation(s.preparation, command, gateForTrouble(s), {
+      catalog: v2 ? catalogV2 : troubleCatalog,
     });
     s.preparation = result.state;
+    if (
+      v2 &&
+      !result.error &&
+      command.action === "push" &&
+      command.rack === "QC" &&
+      !s.runs.original
+    ) {
+      const original = s.preparation.cups[0];
+      if (
+        !s.rule13 ||
+        !s.originalVerified ||
+        !["qc", "reagent", "calibration"].every((id) =>
+          s.factors.includes(id),
+        ) ||
+        original.materialId !== "uibc-primary" ||
+        original.fillSerial !== 1 ||
+        original.rack !== "QC"
+      ) {
+        s.preparation = before;
+        return fail("請將原杯MAS-1裝入綠架，並完成先前判讀及查看");
+      }
+      s.pending = {
+        kind: "original",
+        due: now + (options.durationMs ?? 650),
+        success: true,
+        signatures: [aliquotSignature(original)],
+      };
+    }
     if (!result.error && command.action === "dispense") {
       const cup = s.preparation.cups.find((x) => x.id === command.target)!;
       s.aliquots[cup.id] = {
@@ -577,7 +901,25 @@ export function applyTroubleshooting(
     ].includes(a)
   ) {
     if (!["R1", "R2"].includes(t)) return fail("請選取 R1 或 R2");
-    if (!s.runs.fresh) return fail("請先完成更換品管液後的重測");
+    if (v2 ? !s.rule22 : !s.runs.fresh)
+      return fail(
+        v2 ? "請先完成2.2S判讀及異常處理選擇" : "請先完成更換品管液後的重測",
+      );
+    if (v2 && a === "remove-old" && !Object.values(s.covers!).every(Boolean))
+      return fail("請先打開儀器上蓋及R1、R2上蓋");
+    if (
+      v2 &&
+      a === "install" &&
+      (!s.covers!.main || !s.covers![c.value as Pair])
+    )
+      return fail("請先打開儀器及目標儲存槽上蓋");
+    if (manualTroubleCheck(s) && a === "remove-new") {
+      const bank = (["R1", "R2"] as const).find(
+        (k) => s.reagent.slots[k] === `new-${pair}`,
+      );
+      if (bank && (!s.covers!.main || !s.covers![bank]))
+        return fail("請先打開儀器及對應試劑上蓋，再取回新瓶");
+    }
     if (a === "remove-old") {
       if (!s.reagent.old[pair]) return done("", "舊試劑已取出");
       s.reagent.old[pair] = false;
@@ -621,6 +963,16 @@ export function applyTroubleshooting(
         return fail("請先取回新瓶");
       s.reagent.mix[pair] = { source: null, mixed: false };
       invalidate(s);
+    }
+    if (v2 && !manualTroubleCheck(s) && reagentReady(s)) {
+      s.reagent.checked = true;
+      record(
+        s,
+        "自動Reagent Check",
+        "UIBC",
+        true,
+        "UIBC 試劑已更換，請先完成校正。",
+      );
     }
     return done("", `${a} UIBC ${t}${c.value ? " ← " + c.value : ""}`);
   }
@@ -666,6 +1018,17 @@ export function applyTroubleshooting(
     else s.rack.Serum.sample = [...selection.sample];
     return done("", `Rack ${category} Entry（尚未執行）`);
   }
+  if (
+    v2 &&
+    [
+      "run",
+      "replace-qc",
+      "verify-original",
+      "rack-entry",
+      "reagent-check",
+    ].includes(a)
+  )
+    return fail("此版本由推入操作自動執行；登記使用同批Entry");
   if (a === "run") {
     if (!Object.hasOwn(runNames, t)) return fail("無效執行項目");
     const kind = t as RunKind;
@@ -792,4 +1155,63 @@ export function applyTroubleshooting(
     return done("", "模擬呈送");
   }
   return fail("未知情境操作");
+}
+
+export function reagentReady(s: TroubleState) {
+  return (["R1", "R2"] as const).every(
+    (p) =>
+      !s.reagent.old[p] &&
+      s.reagent.mix[p].source === p + "a" &&
+      s.reagent.mix[p].mixed &&
+      s.reagent.slots[p] === `new-${p}`,
+  );
+}
+// The chart, final review table and server confirmation use the same executed results.
+export function finalQcAssessment(s: TroubleState) {
+  if (s.pending || s.calibration !== "success" || !s.runs.final) return null;
+  const rows = (["primary", "second"] as const).map((level) => {
+    const result = [...s.results]
+      .reverse()
+      .find(
+        (r) =>
+          r.level === level &&
+          r.stage === "final" &&
+          r.id.endsWith(`-${s.reagent.generation}`),
+      );
+    if (!result || result.value === null || !Number.isFinite(result.value))
+      return null;
+    const { mean, sd } = levels[level],
+      min = mean - 2 * sd,
+      max = mean + 2 * sd;
+    return {
+      level,
+      result,
+      min,
+      max,
+      sdi: sdi(level, result.value),
+      accepted: !result.rule && result.value >= min && result.value <= max,
+    };
+  });
+  return rows.every((r) => r !== null)
+    ? (rows as NonNullable<(typeof rows)[number]>[])
+    : null;
+}
+export const troubleBatchRequirements = [
+  ["water", "RB"],
+  ["lcc1", "CALI"],
+  ["uibc-primary", "QC"],
+  ["uibc-second", "QC"],
+] as const;
+export function batchCups(s: TroubleState) {
+  const cups = troubleBatchRequirements.map(([id, rack]) =>
+    s.preparation.cups.find(
+      (c) =>
+        c.materialId === id &&
+        c.rack === rack &&
+        cupFilled(c, catalogV2) &&
+        (rack !== "QC" ||
+          (c.id !== "cup-1" && !s.used.includes(aliquotSignature(c)))),
+    ),
+  );
+  return cups.every(Boolean) ? (cups as PreparationState["cups"]) : null;
 }

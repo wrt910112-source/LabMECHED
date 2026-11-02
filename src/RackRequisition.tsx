@@ -15,6 +15,9 @@ export default function RackRequisition({
   canStart = true,
   calibrationNeeds,
   autoCalibration = false,
+  combined = false,
+  onCombinedEntry,
+  onGuide,
 }: {
   d: Pick<Daily, "rack" | "setRack">;
   notify: (s: string) => void;
@@ -33,6 +36,12 @@ export default function RackRequisition({
   canStart?: boolean;
   calibrationNeeds?: Pick<RackSelection, "rb" | "cal">;
   autoCalibration?: boolean;
+  combined?: boolean;
+  onCombinedEntry?: (
+    selection: RackSelection,
+    type: string,
+  ) => boolean | Promise<boolean>;
+  onGuide?: (hint: { target: string; text: string }) => void;
 }) {
   const [tab, setTab] = useState("Sample"),
     [type, setType] = useState("Serum"),
@@ -91,7 +100,7 @@ export default function RackRequisition({
   }
   const key = tab === "QC" ? "qc" : "sample";
   function switchTab(n: string) {
-    if (editing) {
+    if (editing && !combined) {
       notify("請先 Entry 儲存，或 Exit 放棄本次編輯。");
       return;
     }
@@ -109,7 +118,12 @@ export default function RackRequisition({
     setSaving(true);
     try {
       let success: boolean | void = true;
-      if (tab === "QC") {
+      if (combined && onCombinedEntry)
+        success = await onCombinedEntry(
+          { ...draft, qc: [...qcDrafts.Serum] },
+          type,
+        );
+      else if (tab === "QC") {
         awaiting.current = true;
         awaitingVersion.current = qcSavedVersion;
         if (onQcEntry) success = await onQcEntry(qcDrafts);
@@ -142,6 +156,31 @@ export default function RackRequisition({
     }
   }
 
+  useEffect(() => {
+    if (!combined || !onGuide) return;
+    let hint = { target: "rr-start", text: "按 Start Entry 開始同批登記" };
+    if (type !== "Serum")
+      hint = editing
+        ? { target: "rr-exit", text: "先Exit，再選Serum登記UIBC" }
+        : { target: "rr-type", text: "選取Serum類別" };
+    else if (editing) {
+      if (!draft.rb.includes("27.UIBC") || !draft.cal.includes("27.UIBC"))
+        hint =
+          tab !== "Calibration"
+            ? { target: "rr-tab-Calibration", text: "切換 Calibration" }
+            : !draft.rb.includes("27.UIBC")
+              ? { target: "rr-rb-27.UIBC", text: "選取 27.UIBC 的 RB" }
+              : { target: "rr-cal-27.UIBC", text: "選取 27.UIBC 的 Cal." };
+      else if (!qcDrafts.Serum.includes("27.UIBC"))
+        hint =
+          tab !== "QC"
+            ? { target: "rr-tab-QC", text: "切換 QC，保留校正草稿" }
+            : { target: "rr-qc-27.UIBC", text: "選取 QC 的 27.UIBC" };
+      else
+        hint = { target: "rr-entry", text: "按 Entry，一次保存 RB、CALI、QC" };
+    }
+    onGuide(hint);
+  }, [combined, editing, tab, draft, qcDrafts, onGuide, type]);
   const groups =
     type === "Serum"
       ? [
@@ -159,7 +198,12 @@ export default function RackRequisition({
     <>
       <nav className="ws-primary-tabs">
         {["Sample", "Calibration", "QC"].map((n) => (
-          <button key={n} aria-pressed={tab === n} onClick={() => switchTab(n)}>
+          <button
+            data-guide={`rr-tab-${n}`}
+            key={n}
+            aria-pressed={tab === n}
+            onClick={() => switchTab(n)}
+          >
             {n}
           </button>
         ))}
@@ -187,9 +231,12 @@ export default function RackRequisition({
           <label>
             Type{" "}
             <select
+              data-guide="rr-type"
               aria-label="Rack Type"
               value={type}
-              disabled={locked || (editing && tab !== "QC")}
+              disabled={
+                locked || (combined && editing) || (editing && tab !== "QC")
+              }
               onChange={(e) => setType(e.target.value)}
             >
               <option>Serum</option>
@@ -298,6 +345,7 @@ export default function RackRequisition({
                     key={id}
                     disabled={locked || !editing}
                     aria-pressed={current[key].includes(id)}
+                    data-guide={`rr-qc-${id}`}
                     className={current[key].includes(id) ? "qc-selected" : ""}
                     onClick={() => select(id, key)}
                   >
@@ -328,6 +376,7 @@ export default function RackRequisition({
         {editing ? (
           <>
             <button
+              data-guide="rr-exit"
               disabled={locked}
               onClick={() => {
                 awaiting.current = false;
@@ -338,7 +387,11 @@ export default function RackRequisition({
             >
               Exit
             </button>
-            <button disabled={locked || !canStart} onClick={entry}>
+            <button
+              data-guide="rr-entry"
+              disabled={locked || !canStart}
+              onClick={entry}
+            >
               Entry
             </button>
             <button onClick={() => notify("請直接在表格逐項選取。")}>
@@ -366,6 +419,7 @@ export default function RackRequisition({
         ) : (
           <>
             <button
+              data-guide="rr-start"
               disabled={locked || !canStart}
               onClick={() => {
                 setDraft(structuredClone(autoSelect(d.rack[type])));
@@ -502,6 +556,7 @@ function CalCells({
       <td>{id}</td>
       <td>
         <button
+          data-guide={`rr-rb-${id}`}
           aria-label={`${id} RB`}
           aria-pressed={rb}
           disabled={!editing}
@@ -514,6 +569,7 @@ function CalCells({
       </td>
       <td>
         <button
+          data-guide={`rr-cal-${id}`}
           aria-label={`${id} Cal.`}
           aria-pressed={cal}
           disabled={!editing}

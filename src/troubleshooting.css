@@ -122,6 +122,31 @@
   bottom: auto;
   width: 165px;
 }
+.trouble-room .trouble-bench-note-toggle {
+  position: absolute;
+  top: 14px;
+  right: 350px;
+  z-index: 4;
+  border-color: #8ed8e5;
+}
+.trouble-bench-note {
+  border: 1px solid #7aaebb;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 12px;
+  background: #1c3a4a;
+}
+.trouble-bench-note h2 {
+  margin: 0 0 8px;
+}
+.trouble-bench-note ul {
+  padding-left: 18px;
+}
+.trouble-gold-key {
+  border-left: 3px solid #ffd700;
+  padding-left: 8px;
+  color: #ffe18c;
+}
 .trouble-warning {
   color: #f2cc77;
 }
@@ -385,6 +410,40 @@
   font-size: 11px;
   color: #485357;
 }
+.lis-final-qc {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #6b9690;
+  background: #edf6f1;
+}
+.lis-final-qc h3 {
+  margin-top: 0;
+}
+.lis-final-qc p {
+  color: #234b40;
+}
+.lis-final-qc .lis-qc-accepted {
+  color: #136530;
+  font-weight: bold;
+}
+.lis-final-qc .lis-qc-rejected {
+  color: #bc2121;
+  font-weight: bold;
+}
+.lis-calibration-reminder {
+  padding: 10px;
+  border-left: 3px solid #b17b16;
+  background: #fff3d9;
+  color: #5a400d;
+}
+.lis-phrase-help {
+  margin: 0 16px 6px;
+  padding: 10px;
+  border-left: 3px solid #1a8eac;
+  background: #e2f3f8;
+  color: #17536a;
+  font-size: 13px;
+}
 .lis-form-identity {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -612,4 +671,75 @@
   .lis-body {
     font-size: 12px;
   }
+}
+
+/* Only the current practice target receives this class. Native focus stays visible. */
+.trouble-room .trouble-next {
+  outline: 3px solid #55eaff !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 10px 3px #55eaff80 !important;
+  position: relative;
+}
+.trouble-room svg .trouble-next {
+  filter: drop-shadow(0 0 3px #55eaff);
+}
+.trouble-context {
+  border: 1px solid #4b697a;
+  padding: 12px;
+  margin: 12px 0;
+}
+.trouble-batch {
+  border: 1px solid #4b697a;
+  margin: 14px 0;
+  padding: 12px;
+}
+.trouble-batch label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0;
+}
+.trouble-batch input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.trouble-sop-reference {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  cursor: zoom-in;
+}
+.lis-sop a {
+  margin-left: 14px;
+}
+.lis-sop-dialog {
+  width: min(95vw, 1700px);
+  max-width: 95vw;
+  height: 90vh;
+  padding: 12px;
+  background: #f1f1f1;
+  color: #172b38;
+  border: 2px solid #92afbf;
+}
+.lis-sop-dialog header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+.lis-sop-dialog header b {
+  margin-right: auto;
+}
+.sop-image-scroll {
+  height: calc(100% - 60px);
+  overflow: auto;
+}
+.trouble-room .reagent-detail tr.selected td {
+  background: #0076d9;
+  color: white;
+}
+.trouble-room .reagent-detail tr.selected td.stability-expired {
+  background: #fff065;
+  color: #9b241c;
 }

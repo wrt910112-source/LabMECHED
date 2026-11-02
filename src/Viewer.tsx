@@ -49,6 +49,8 @@ export interface SceneSelection {
 interface Props {
   troubleshooting?: TroubleState;
   troubleSelection?: string | null;
+  troubleGuideTarget?: string;
+  onTroubleMotion?: (active: boolean) => void;
   onTroubleSelect?: (id: string) => void;
   preparation?: PreparationVisual;
   onPreparationSelect?: (id: string) => void;
@@ -199,6 +201,13 @@ export default function Viewer(props: Props) {
     selectionBox.visible = false;
     scene.add(selectionBox);
     const setCaseSelection = (object?: T.Object3D | null) => {
+      const guide = current.current.troubleGuideTarget;
+      const target = guide
+        ? troubleModel.targets.get(guide) || bench?.targets.get(guide)
+        : null;
+      if (target) object = target;
+      if (object && !object.visible) object = null;
+      selectionBox.material.color.set(target ? "#55eaff" : "#6bd8ec");
       selectionBox.visible = !!current.current.troubleshooting && !!object;
       if (selectionBox.visible && object) selectionBox.setFromObject(object);
     };
@@ -267,15 +276,29 @@ export default function Viewer(props: Props) {
       string,
       { eye: T.Vector3; target: T.Vector3 }
     >();
+    let troubleTimer: ReturnType<typeof setTimeout> | undefined;
+    const syncTroubleMotion = () => {
+      clearTimeout(troubleTimer);
+      const active = troubleModel.isAnimating();
+      el.dataset.troubleMotion = String(active);
+      current.current.onTroubleMotion?.(active);
+      if (active)
+        troubleTimer = setTimeout(() => {
+          troubleModel.animate(performance.now());
+          syncTroubleMotion();
+          invalidate();
+        }, troubleModel.motionRemaining() + 20);
+    };
     engine.current = {
       troubleshooting: (state) => {
         troubleModel.update(state);
+        syncTroubleMotion();
         const selected = current.current.troubleSelection;
         if (selected)
           outline.selectedObjects = [
             troubleModel.targets.get(selected)!,
           ].filter(Boolean);
-        if (selected) setCaseSelection(troubleModel.targets.get(selected));
+        setCaseSelection(selected ? troubleModel.targets.get(selected) : null);
         invalidate();
       },
       preparation: (p) => {
@@ -518,6 +541,16 @@ export default function Viewer(props: Props) {
     const tick = () => {
       frame = requestAnimationFrame(tick);
       const now = performance.now();
+      const caseMoving = troubleModel.animate(now);
+      if (caseMoving)
+        el.dataset.troubleMotionProgress = String(
+          troubleModel.motionProgress(now),
+        );
+      if (el.dataset.troubleMotion !== String(caseMoving)) {
+        el.dataset.troubleMotion = String(caseMoving);
+        current.current.onTroubleMotion?.(caseMoving);
+        invalidate();
+      }
       if (current.current.suspended) {
         wasSuspended = true;
         return;
@@ -549,7 +582,8 @@ export default function Viewer(props: Props) {
         (p.practice && p.daily.mode === "inspect") ||
         !!p.weekly?.diag ||
         !!(p.weekly?.batch && Date.now() - p.weekly.batch < 2600);
-      if (!first && !animating && !moving && now > drawUntil) return;
+      if (!first && !animating && !moving && !caseMoving && now > drawUntil)
+        return;
       if (!first && now - lastDraw < 1000 / 30) return;
       lastDraw = now;
       if (animating) {
@@ -706,6 +740,7 @@ export default function Viewer(props: Props) {
     tick();
     return () => {
       cancelAnimationFrame(frame);
+      clearTimeout(troubleTimer);
       observer.disconnect();
       controls.removeEventListener("change", invalidate);
       controls.removeEventListener("start", cancel);
@@ -716,11 +751,12 @@ export default function Viewer(props: Props) {
       renderer.domElement.removeEventListener("pointermove", pointerMove);
       renderer.domElement.removeEventListener("pointerup", pointerUp);
       renderer.domElement.removeEventListener("pointerleave", leave);
+      troubleModel.dispose();
       const geometries = new Set<T.BufferGeometry>(),
         materials = new Set<T.Material>(),
         textures = new Set<T.Texture>();
       scene.traverse((o) => {
-        if (o instanceof T.Mesh) {
+        if (o instanceof T.Mesh || o instanceof T.LineSegments) {
           geometries.add(o.geometry);
           (Array.isArray(o.material) ? o.material : [o.material]).forEach(
             (m) => {
@@ -757,7 +793,7 @@ export default function Viewer(props: Props) {
   useEffect(() => engine.current?.bottles(props.bottles), [props.bottles]);
   useEffect(
     () => engine.current?.troubleshooting(props.troubleshooting),
-    [props.troubleshooting, props.troubleSelection],
+    [props.troubleshooting, props.troubleSelection, props.troubleGuideTarget],
   );
   useEffect(() => engine.current?.doors(props.doorState), [props.doorState]);
   useEffect(() => engine.current?.ise(props.iseState), [props.iseState]);

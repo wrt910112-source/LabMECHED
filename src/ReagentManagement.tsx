@@ -1,5 +1,7 @@
 import type { ReagentBottle } from "../shared/dailyScenario";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { TroubleState, TroubleAction } from "../shared/troubleshooting";
+import type { TroubleHint } from "./troubleGuide";
 import type { Daily } from "./DailyTraining";
 import {
   tests,
@@ -416,5 +418,250 @@ export function ExamReagentManagement({
         </div>
       )}
     </>
+  );
+}
+
+// Reuses the native workstation's table, tabs and footer styles without daily-task state.
+export function TroubleReagentManagement({
+  state: s,
+  busy,
+  act,
+  onGuide,
+}: {
+  state: TroubleState;
+  busy: boolean;
+  act: (a: TroubleAction) => boolean | Promise<boolean>;
+  onGuide?: (hint: TroubleHint) => void;
+}) {
+  const [tab, setTab] = useState("Main"),
+    [section, setSection] = useState("Reagent Management"),
+    [check, setCheck] = useState(false),
+    [selected, setSelected] = useState(false);
+  useEffect(() => {
+    if (!onGuide) return;
+    const hint =
+      section !== "Reagent Management"
+        ? { target: "rm-section", text: "切換 Reagent Management" }
+        : tab !== "Details"
+          ? { target: "rm-details", text: "開啟 Details，查看試劑清單" }
+          : !s.reagent.checked
+            ? check
+              ? {
+                  target: "rm-check-confirm",
+                  text: "按 All positions，執行 Reagent Check",
+                }
+              : { target: "rm-check", text: "按 Reagent Check" }
+            : !selected
+              ? { target: "rm-uibc", text: "選取 27.UIBC，查看更新的試劑結果" }
+              : {
+                  target: "rm-review",
+                  text: "確認UIBC兩瓶已更新，RB與CALI需校正",
+                };
+    onGuide(hint);
+  }, [tab, section, check, selected, s.reagent.checked, onGuide]);
+  const status = !s.reagent.checked
+    ? "未檢查"
+    : s.calibration === "success"
+      ? "已完成校正（情境）"
+      : "expired／需校正";
+  return (
+    <section aria-label="UIBC Reagent Management">
+      <nav className="ws-primary-tabs">
+        {["Reagent Management", "Reagent Inventory", "Reagent Consumption"].map(
+          (n) => (
+            <button
+              key={n}
+              data-guide={n === "Reagent Management" ? "rm-section" : undefined}
+              aria-pressed={section === n}
+              onClick={() => setSection(n)}
+            >
+              {n}
+            </button>
+          ),
+        )}
+      </nav>
+      <nav className="ws-tabs">
+        {["Main", "Details", "ISE"].map((n) => (
+          <button
+            key={n}
+            data-guide={n === "Details" ? "rm-details" : undefined}
+            aria-pressed={tab === n}
+            onClick={() => setTab(n)}
+          >
+            {n}
+          </button>
+        ))}
+      </nav>
+      <div className="reagent-page">
+        <div className="reagent-controls">
+          <div className="reagent-legend">
+            <span>Inaccessible</span>
+            <span>Checked</span>
+            <span>Reagent Short</span>
+            <span>R1 Status</span>
+            <span>R2 Status</span>
+          </div>
+          <label>
+            Type{" "}
+            <select>
+              <option>Serum</option>
+            </select>
+          </label>
+          <label>
+            Reagent Display{" "}
+            <select>
+              <option>Test</option>
+            </select>
+          </label>
+        </div>
+        {section !== "Reagent Management" || tab === "ISE" ? (
+          <p>
+            可查看參考頁；本次UIBC試劑檢查位於 Reagent Management → Details。
+          </p>
+        ) : (
+          <>
+            <button
+              data-guide="rm-uibc"
+              aria-pressed={selected}
+              onClick={() => {
+                setTab("Details");
+                setSelected(true);
+              }}
+            >
+              27.UIBC／查看試劑更新
+            </button>
+            {tab === "Details" && (
+              <div className="reagent-detail-scroll">
+                <table className="reagent-detail" aria-label="UIBC試劑更新">
+                  <thead>
+                    <tr>
+                      {[
+                        "Pos.",
+                        "Test Name",
+                        "R1/R2",
+                        "Shots",
+                        "Onboard Remaining",
+                        "RB Stability Remaining",
+                        "Cal Stability Remaining",
+                        "Expiration",
+                        "Lot No.",
+                        "Bottle No. (SN)",
+                        "Seq.",
+                        "Comment",
+                      ].map((n) => (
+                        <th key={n}>{n}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(["R1", "R2"] as const).map((pair) => (
+                      <tr key={pair} className={selected ? "selected" : ""}>
+                        <td>{pair} 教學位置</td>
+                        <td>27.UIBC</td>
+                        <td>{pair}</td>
+                        <td>待設定</td>
+                        <td>待設定</td>
+                        <td
+                          data-testid="uibc-rb-status"
+                          className={
+                            s.reagent.checked && s.calibration !== "success"
+                              ? "stability-expired"
+                              : ""
+                          }
+                        >
+                          {status}
+                        </td>
+                        <td
+                          data-testid="uibc-cal-status"
+                          className={
+                            s.reagent.checked && s.calibration !== "success"
+                              ? "stability-expired"
+                              : ""
+                          }
+                        >
+                          {status}
+                        </td>
+                        <td>待設定</td>
+                        <td>待設定</td>
+                        <td>待設定</td>
+                        <td>—</td>
+                        <td>
+                          {s.reagent.checked
+                            ? "新瓶已更新；請依RB／CALI狀態申請"
+                            : "等待Reagent Check更新"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+        <p>
+          本機教學模擬；正式儲位、容量、批號與效期未提供，保持待設定。檢查不等於校正成功。
+        </p>
+        {check && (
+          <fieldset>
+            <legend>Reagent Check</legend>
+            <button
+              data-guide="rm-check-confirm"
+              disabled={busy}
+              onClick={async () => {
+                if (await act({ action: "reagent-check" })) {
+                  setCheck(false);
+                  setSelected(false);
+                }
+              }}
+            >
+              All positions
+            </button>
+            <button onClick={() => setCheck(false)}>取消</button>
+          </fieldset>
+        )}
+        {s.reagent.checked && (
+          <>
+            <p role="status">
+              {s.calibration === "success"
+                ? "✓ Reagent Check 已完成；UIBC已完成校正（情境），QC與回溯須獨立確認。"
+                : "✓ Reagent Check 已完成。UIBC 試劑已更換，請先完成校正。"}
+            </p>
+            <button
+              data-guide="rm-review"
+              disabled={busy}
+              onClick={() => void act({ action: "review-reagent-update" })}
+            >
+              {s.calibration === "success"
+                ? "確認 UIBC 更新／情境校正已完成"
+                : "確認 UIBC 更新／RB及CALI需校正"}
+            </button>
+            {s.reagent.updateReviewed && <p>已查看UIBC試劑更新。</p>}
+          </>
+        )}
+      </div>
+      <nav className="ws-footer">
+        {[
+          "Edit",
+          "Position Setting",
+          "ID Edit",
+          "Read Master Curve",
+          "Reagent Check",
+          "Reagent History",
+          "Previous Setting",
+          "Print",
+        ].map((n) => (
+          <button
+            key={n}
+            data-guide={n === "Reagent Check" ? "rm-check" : undefined}
+            disabled={busy && n === "Reagent Check"}
+            onClick={() => {
+              if (n === "Reagent Check") setCheck(true);
+            }}
+          >
+            {n}
+          </button>
+        ))}
+      </nav>
+    </section>
   );
 }

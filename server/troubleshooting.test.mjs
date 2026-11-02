@@ -13,7 +13,7 @@ import {
   traceRows,
   differencePercent,
   traceAcceptable,
-  troubleVersion,
+  legacyTroubleVersion as troubleVersion,
 } from "../shared/troubleshooting.ts";
 import {
   initialEngine,
@@ -268,7 +268,7 @@ test("UIBC API uses existing transactions, resumes a new kind, deduplicates even
     const start = await request("/attempts", { kind: "troubleshooting" });
     assert.equal(start.status, 201);
     const a = start.body.attempt;
-    assert.equal(a.version, troubleVersion);
+    assert.equal(a.version, "AU5800-UIBC-2026-10-30-v4");
     assert.equal(a.progress.totalGroups, 12);
     const event = {
       id: "uibc-event-initial-review-0001",

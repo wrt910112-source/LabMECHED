@@ -1,47 +1,48 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
+import LegacyRoom from "./TroubleshootingRoomV1";
 import Viewer from "./Viewer";
-import { views, asset, type PartId } from "./data";
+import { asset, views } from "./data";
 import { closedDoors } from "./enclosures";
 import { initialBottles } from "./detergents";
-import { preparationViews, type PreparationView } from "./preparationModel";
+import { type PreparationView } from "./preparationModel";
 import RackRequisition from "./RackRequisition";
+import { TroubleReagentManagement } from "./ReagentManagement";
+import TroubleReferences from "./TroubleReferences";
+import { ResultTable, LjCharts, IncidentForm, TraceForm } from "./TroubleLis";
 import {
-  ResultTable,
-  LjCharts,
-  IncidentForm,
-  TraceForm,
-  type TroubleDispatch,
-} from "./TroubleLis";
-import {
+  isTroubleV2,
+  manualTroubleCheck,
+  requiresQcConfirmation,
+  finalQcAssessment,
   troubleTitle,
-  troubleIdentity,
-  troubleMaterials,
-  troubleCatalog,
+  troubleMaterialsV2,
+  troubleBatchRequirements,
+  catalogV2,
+  gateForTrouble,
   troubleChecks,
-  troubleGate,
-  troubleStepNames,
-  runNames,
-  type RunKind,
-  type TroubleState,
   type TroubleAction,
 } from "../shared/troubleshooting";
 import type { MaterialKind } from "../shared/materialCatalog";
+import { nextTroubleHint, type TroubleHint } from "./troubleGuide";
 import "./troubleshooting.css";
-export type TroubleWorkspace =
-  | "approval"
-  | "chart"
-  | "factors"
-  | "bench"
-  | "reagent"
-  | "calibration"
-  | "trace"
-  | "form"
-  | "sop"
-  | "log";
-const routes: TroubleWorkspace[] = [
-  "approval",
+type Props = ComponentProps<typeof LegacyRoom>;
+export default function TroubleshootingRoom(props: Props) {
+  return isTroubleV2(props.state) ? (
+    <RoomV2 {...props} />
+  ) : (
+    <LegacyRoom {...props} />
+  );
+}
+const routes = [
   "chart",
-  "approval",
+  "factors",
+  "bench",
   "chart",
   "reagent",
   "calibration",
@@ -52,24 +53,23 @@ const routes: TroubleWorkspace[] = [
   "form",
   "form",
 ];
-const hints = [
-  "選取 MAS27091 的 UIBC 183 結果，查看後開啟 L-J 圖。",
-  "分別查看品管液、試劑、校正資料；183 超過 +3 SD，確認 1.3S。",
-  "核對原杯身分；杯1為原杯，將它裝入綠架、放至進樣區、推入，再執行原杯重測。",
-  "查看179與圖上的183；同側相鄰兩點超過+2 SD，確認2.2S。",
-  "先更換QC來源，另杯重新分裝、上機並重測。仍異常後，取出兩舊瓶；R1a→R1、R2a→R2，混勻、放回對應空槽後Reagent Check。",
-  "申請27.UIBC校正，分裝LCC2並裝入黃架、推入後執行校正。",
-  "申請UIBC QC；兩濃度各自新分裝、裝綠架及上機，執行後各自核對155與50。",
-  "分別核對P01、P02，選取模擬PDF並上傳成功。",
-  "原因探討片語：新泡製試劑。移入編輯區並確定。",
-  "矯正措施加入B28、B27、B21、B22；保留完整實際操作紀錄。",
-  "矯正結果加入「品管合格」「進行檢體回溯，待合批收。」。預防措施非必填。",
-  "核對必要處置、兩筆回溯、附件與表單後按原表單「呈送」。",
+const nav = [
+  ["approval", "QC 審批"],
+  ["chart", "L-J 圖"],
+  ["factors", "相關因素"],
+  ["bench", "備料工作台"],
+  ["reagent", "UIBC 試劑"],
+  ["management", "Reagent Management"],
+  ["calibration", "Rack Requisition"],
+  ["trace", "檢體回溯填報"],
+  ["form", "品管異常處理表"],
+  ["sop", "查看 SOP"],
 ];
-export default function TroubleshootingRoom({
+function RoomV2({
   state: s,
   exam = false,
   busy = false,
+  locked = false,
   feedback = "",
   onAction,
   onReturn,
@@ -77,75 +77,91 @@ export default function TroubleshootingRoom({
   onFinishExam,
   onRetry,
   networkFailure = false,
-  locked = false,
   startedAt,
-}: {
-  state: TroubleState;
-  exam?: boolean;
-  busy?: boolean;
-  feedback?: string;
-  onAction: TroubleDispatch;
-  onReturn: () => void;
-  onReset?: () => void;
-  onFinishExam?: () => void;
-  onRetry?: () => void;
-  networkFailure?: boolean;
-  locked?: boolean;
-  startedAt?: number;
-}) {
-  const [workspace, setWorkspace] = useState<TroubleWorkspace>("approval"),
-    [benchView, setBenchView] = useState<PreparationView>("bench"),
-    [collapsed, setCollapsed] = useState(false),
-    [showVerify, setShowVerify] = useState(false),
+}: Props) {
+  const [workspace, setWorkspace] = useState("approval"),
     [rule, setRule] = useState(""),
-    [runKind, setRunKind] = useState<RunKind>("original");
+    [followup, setFollowup] = useState("");
   const [cup, setCup] = useState("cup-1"),
     [rack, setRack] = useState<MaterialKind>("QC"),
     [slot, setSlot] = useState(1),
-    [pair, setPair] = useState<"R1" | "R2">("R1"),
-    [aux, setAux] = useState("R1a"),
-    [bank, setBank] = useState<"R1" | "R2">("R1"),
-    [reagentSelection, setReagentSelection] = useState<string | null>(null);
-  const [test, setTest] = useState("UIBC"),
-    [specimen, setSpecimen] = useState("MAS27091"),
-    [originalCup, setOriginalCup] = useState("cup-1"),
+    [batches, setBatches] = useState<string[]>(["QC"]);
+  const [view, setView] = useState<PreparationView>("bench"),
+    [selection, setSelection] = useState<string | null>(null),
+    [install, setInstall] = useState(false),
+    [bank, setBank] = useState("R1");
+  const [factor, setFactor] = useState(""),
+    [rr, setRr] = useState<TroubleHint | null>(null),
+    [phrase, setPhrase] = useState<TroubleHint | null>(null),
+    [browse, setBrowse] = useState(false);
+  const [moving, setMoving] = useState(false),
+    [management, setManagement] = useState<TroubleHint | null>(null);
+  const onManagementGuide = useCallback(
+    (hint: TroubleHint) => setManagement(hint),
+    [],
+  );
+  const [collapsed, setCollapsed] = useState(false),
+    [benchNoteOpen, setBenchNoteOpen] = useState(false),
     [notice, setNotice] = useState(""),
-    [now, setNow] = useState(Date.now()),
-    [request, setRequest] = useState({ ...views[0], serial: 0 });
-  const [bottles] = useState(initialBottles),
-    lock = useRef(false),
-    verify = useRef<HTMLDialogElement>(null);
-  const checks = troubleChecks(s),
-    current = Math.max(
-      0,
-      checks.findIndex((c) => !c.done),
-    ),
-    done = checks.every((c) => c.done),
-    pending = busy || locked || !!s.pending;
-  const selectedCup = s.preparation.cups.find((c) => c.id === cup)!,
-    source = s.preparation.source ? troubleCatalog[s.preparation.source] : null;
-  async function act(c: TroubleAction) {
-    if (lock.current || busy || locked) return false;
-    lock.current = true;
-    setNotice("");
+    [now, setNow] = useState(Date.now());
+  const [request] = useState({ ...views[0], serial: 0 }),
+    [bottles] = useState(initialBottles);
+  const root = useRef<HTMLElement>(null),
+    actionLock = useRef(false),
+    previousSeq = useRef(s.seq),
+    shownFinal = useRef<number | null>(null),
+    previousQcConfirmed = useRef(s.qcRecovered);
+  const pending = busy || locked || !!s.pending || moving,
+    checks = troubleChecks(s),
+    step = checks.findIndex((c) => !c.done),
+    done = step < 0;
+  const onRrGuide = useCallback((hint: TroubleHint) => setRr(hint), []);
+  const onPhraseGuide = useCallback(
+    (hint: TroubleHint | null) => setPhrase(hint),
+    [],
+  );
+  const onBrowse = useCallback((value: boolean) => setBrowse(value), []);
+  const next =
+    exam || done
+      ? null
+      : onRetry
+        ? { target: "retry", text: "重試保存，保留同一事件" }
+        : pending
+          ? null
+          : nextTroubleHint(s, {
+              workspace,
+              rule,
+              followup,
+              cup,
+              rack,
+              slot,
+              selection,
+              view,
+              install,
+              bank,
+              batches,
+              factor,
+              rr,
+              phrase,
+              browse,
+              management,
+            });
+  async function act(command: TroubleAction) {
+    if (actionLock.current || busy || locked) return false;
+    actionLock.current = true;
     try {
-      const ok = await onAction(c);
-      if (ok)
-        setNotice(
-          c.action === "preparation" && c.data?.action === "select"
-            ? "已選取物件。"
-            : "操作已記錄。",
-        );
+      const ok = await onAction(command);
+      setNotice(ok ? "操作已記錄。" : "操作未完成，請核對目前條件。");
       return ok;
     } finally {
-      lock.current = false;
+      actionLock.current = false;
     }
   }
-  function go(next: TroubleWorkspace) {
-    setWorkspace(next);
-    if (next === "bench") setBenchView("bench");
-    if (next === "reagent") setBenchView("reagent");
-    void act({ action: "view", target: next });
+  function go(id: string) {
+    setWorkspace(id);
+    if (id === "bench") setView("bench");
+    if (id === "reagent") setView("reagent");
+    void act({ action: "view", target: id });
   }
   function prep(
     action: string,
@@ -157,33 +173,87 @@ export default function TroubleshootingRoom({
       data: { action, ...(target ? { target } : {}), ...extra },
     });
   }
+  function pick(id: string) {
+    setWorkspace("reagent");
+    setSelection(id);
+    setInstall(false);
+    if (id.startsWith("bottle:")) {
+      const bottle = id.split(":")[1];
+      const inInstrument = Object.values(s.reagent.slots).includes(bottle);
+      setView(inInstrument ? "reagent" : "bench");
+    }
+  }
+  async function batch(
+    action: "batch-stage" | "batch-push" | "batch-retrieve",
+  ) {
+    if (!s.runs.original) {
+      if (batches.length !== 1 || batches[0] !== "QC") {
+        setNotice(exam ? "操作未完成。" : "原杯重測只使用綠色QC架。");
+        return;
+      }
+      if (
+        await prep(
+          action === "batch-stage"
+            ? "stage"
+            : action === "batch-push"
+              ? "push"
+              : "retrieve",
+          undefined,
+          { rack: "QC" },
+        )
+      )
+        setView(action === "batch-retrieve" ? "bench" : "loading");
+    } else if (await act({ action, data: { racks: batches } }))
+      setView(action === "batch-retrieve" ? "bench" : "loading");
+  }
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (showVerify) verify.current?.showModal();
-    else verify.current?.close();
-  }, [showVerify]);
-  useEffect(() => {
-    if (s.seq === 0) {
-      setWorkspace("approval");
-      setCup("cup-1");
-      setRule("");
-      setRunKind("original");
-      setNotice("");
+    if (!requiresQcConfirmation(s)) return;
+    if (!s.runs.final) shownFinal.current = null;
+    if (
+      s.runs.final &&
+      !pending &&
+      !s.qcRecovered &&
+      shownFinal.current !== s.reagent.generation
+    ) {
+      shownFinal.current = s.reagent.generation;
+      setWorkspace("chart");
+      setCollapsed(false);
+      root.current?.querySelector(".lis-body")?.scrollTo({ top: 0 });
     }
+    if (!previousQcConfirmed.current && s.qcRecovered) setWorkspace("trace");
+    previousQcConfirmed.current = s.qcRecovered;
+  }, [s.runs.final, s.qcRecovered, s.reagent.generation, pending, s.version]);
+  useEffect(() => {
+    if (s.seq < previousSeq.current) {
+      setWorkspace("approval");
+      setRule("");
+      setFollowup("");
+      setSelection(null);
+      setBatches(["QC"]);
+      setCup("cup-1");
+      setView("bench");
+    }
+    previousSeq.current = s.seq;
   }, [s.seq]);
   useEffect(() => {
-    const [kind, id, n] = s.preparation.selection?.split(":") || [];
-    if (kind === "cup") setCup(id);
-    if (kind === "slot" || kind === "rack") {
-      setRack(id as MaterialKind);
-      if (n) setSlot(Number(n));
-    }
-  }, [s.preparation.selection]);
+    const highlighted = root.current?.querySelectorAll(".trouble-next");
+    highlighted?.forEach((el) => el.classList.remove("trouble-next"));
+    if (next)
+      root.current
+        ?.querySelector(`[data-guide="${next.target}"]`)
+        ?.classList.add("trouble-next");
+    return () => {
+      root.current
+        ?.querySelectorAll(".trouble-next")
+        .forEach((el) => el.classList.remove("trouble-next"));
+    };
+  }, [next?.target, workspace, s.seq, phrase, rr, pending, collapsed, browse]);
   useEffect(() => {
-    function key(e: KeyboardEvent) {
+    const handler = (e: KeyboardEvent) => {
       if (
         e.key.toLowerCase() !== "e" ||
         e.repeat ||
@@ -191,52 +261,51 @@ export default function TroubleshootingRoom({
         e.metaKey ||
         e.altKey ||
         e.defaultPrevented ||
-        pending ||
         workspace !== "bench" ||
+        pending ||
         (e.target instanceof HTMLElement &&
-          e.target.closest("input,select,textarea")) ||
-        [...document.querySelectorAll("dialog[open]")].some(
-          (d) => !d.contains(document.querySelector(".trouble-room")),
-        )
+          e.target.closest("input,select,textarea,dialog"))
       )
         return;
       e.preventDefault();
       void prep(s.preparation.pipette ? "dispense" : "aspirate", cup);
-    }
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   });
-  const calibrationBlocked = !["baseline", "success"].includes(s.calibration);
-  const nativeTitle: Record<TroubleWorkspace, string> = {
-    approval: "品管確認作業",
-    chart: "QC L-J Chart",
-    factors: "相關因素資料",
-    bench: "CALI／QC 備料",
-    reagent: "UIBC 試劑",
-    calibration: "Rack Requisition／UIBC 校正",
-    trace: "檢體回溯填報",
-    form: "品管異常處理表",
-    sop: "本情境處理流程",
-    log: "操作紀錄",
-  };
-  const nav = [
-    ["approval", "QC 審批"],
-    ["chart", "L-J 圖"],
-    ["factors", "相關因素"],
-    ["bench", "備料工作台"],
-    ["reagent", "UIBC 試劑"],
-    ["calibration", "Rack Requisition"],
-    ["trace", "檢體回溯填報"],
-    ["form", "品管異常處理表"],
-    ["sop", "查看 SOP"],
-  ] as [TroubleWorkspace, string][];
+  function locate() {
+    if (!next) return;
+    root.current
+      ?.querySelector(`[data-guide="${next.target}"]`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  const source = s.preparation.source ? catalogV2[s.preparation.source] : null,
+    selectedCup = s.preparation.cups.find((c) => c.id === cup)!;
+  const key = selection?.split(":")[1] || "",
+    pair = key.endsWith("R2") ? "R2" : "R1";
+  const finalReview = requiresQcConfirmation(s) && !!s.runs.final,
+    finalAssessment = finalQcAssessment(s),
+    finalAccepted = !!finalAssessment?.every((r) => r.accepted);
+  const button = (
+    id: string,
+    text: string,
+    action: () => void,
+    disabled = pending,
+  ) => (
+    <button data-guide={id} disabled={disabled} onClick={action}>
+      {text}
+    </button>
+  );
   return (
     <section
+      ref={root}
       className={`trouble-room ${exam ? "trouble-exam" : ""}`}
       aria-label={exam ? "UIBC 障礙排除考試" : "UIBC 障礙排除練習"}
       data-mode={exam ? "exam" : "practice"}
       data-saving={busy}
-      data-running={!!s.pending}
+      data-running={!!s.pending || moving}
+      data-version={s.version}
+      data-next={next?.target || ""}
     >
       <header className="trouble-header">
         <strong>
@@ -259,6 +328,7 @@ export default function TroubleshootingRoom({
         {nav.map(([id, name]) => (
           <button
             key={id}
+            data-guide={`nav-${id}`}
             aria-pressed={workspace === id}
             onClick={() => go(id)}
           >
@@ -272,7 +342,7 @@ export default function TroubleshootingRoom({
           internal={false}
           labels={false}
           request={request}
-          onSelect={(id: PartId) => {
+          onSelect={(id) => {
             if (id === "r1" || id === "r2") go("reagent");
           }}
           zoom={0}
@@ -299,305 +369,331 @@ export default function TroubleshootingRoom({
           topInset={130}
           preparation={{
             state: s.preparation,
-            gate: troubleGate,
-            view: benchView,
+            gate: gateForTrouble(s),
+            view,
             exam,
             freeSimulation: true,
-            materials: troubleMaterials,
+            materials: troubleMaterialsV2,
           }}
           troubleshooting={s}
-          troubleSelection={reagentSelection}
+          onTroubleMotion={setMoving}
+          troubleSelection={selection}
+          troubleGuideTarget={!exam ? next?.model : undefined}
           onPreparationSelect={(id) => {
-            setReagentSelection(null);
+            setSelection(null);
             void prep("select", id);
+            if (id.startsWith("cup:")) setCup(id.split(":")[1]);
+            if (id.startsWith("slot:")) {
+              setRack(id.split(":")[1] as MaterialKind);
+              setSlot(Number(id.split(":")[2]));
+            }
           }}
-          onTroubleSelect={(id) => {
-            setReagentSelection(id);
-            const key = id.split(":")[1];
-            if (id.startsWith("bank:")) setBank(key as "R1" | "R2");
-            else if (key.endsWith("a")) setAux(key);
-            else setPair(key.endsWith("R2") ? "R2" : "R1");
-          }}
+          onTroubleSelect={pick}
         />
-        {
-          <section
-            className="lis-window"
-            hidden={["bench", "reagent"].includes(workspace)}
-            aria-label={nativeTitle[workspace]}
-          >
-            <header>
-              <b>{nativeTitle[workspace]}</b>
-              <span>教學模擬　M229：AU5800</span>
-              <button onClick={() => go("bench")} aria-label="收合電腦視窗">
-                —
-              </button>
-            </header>
-            <div className="lis-body">
-              {workspace === "approval" && (
-                <>
-                  <div className="lis-filter">
-                    <label>
-                      品管組{" "}
-                      <select>
-                        <option>BIO：生化組</option>
-                      </select>
-                    </label>
-                    <label>
-                      儀器{" "}
-                      <select>
-                        <option>M229：AU5800</option>
-                      </select>
-                    </label>
-                    <label>
-                      品管時序{" "}
-                      <select>
-                        <option>本次與模擬歷史</option>
-                      </select>
-                    </label>
-                    <span>狀態：有效未確認／異常待處理</span>
-                  </div>
-                  <ResultTable s={s} act={act} busy={pending} />
-                  <div className="lis-toolbar">
-                    <button onClick={() => go("chart")}>查看 L-J 圖</button>
-                    <button onClick={() => setShowVerify(true)}>
-                      原杯重測身分核對
-                    </button>
-                    <label>
-                      執行方式{" "}
-                      <select
-                        aria-label="QC 執行方式"
-                        value={runKind}
-                        onChange={(e) => setRunKind(e.target.value as RunKind)}
-                      >
-                        {Object.entries(runNames).map(([id, name]) => (
-                          <option key={id} value={id}>
-                            {name}
-                          </option>
+        <section
+          className="lis-window"
+          hidden={["bench", "reagent"].includes(workspace)}
+          aria-label="UIBC 電腦視窗"
+        >
+          <header>
+            <b>{nav.find(([id]) => id === workspace)?.[1] || "操作紀錄"}</b>
+            <span>教學模擬　M229：AU5800</span>
+            <button onClick={() => go("bench")} aria-label="收合電腦視窗">
+              —
+            </button>
+          </header>
+          <div className="lis-body">
+            {workspace === "approval" && (
+              <>
+                <div className="lis-filter">
+                  品管組：BIO 生化組　儀器：M229／AU5800　狀態：異常待處理
+                </div>
+                <ResultTable s={s} act={act} busy={pending} />
+                <div className="lis-toolbar">
+                  {button(
+                    "approval-chart",
+                    "查看 L-J 圖",
+                    () => go("chart"),
+                    false,
+                  )}
+                </div>
+              </>
+            )}
+            {workspace === "chart" && (
+              <>
+                <LjCharts s={s} act={act} />
+                {finalReview ? (
+                  <section className="lis-final-qc" aria-label="兩濃度 QC 判讀">
+                    <h3>校正後兩濃度 QC 判讀</h3>
+                    <table aria-label="兩濃度 QC 允收結果">
+                      <thead>
+                        <tr>
+                          <th>濃度</th>
+                          <th>結果</th>
+                          <th>允收範圍（±2 SD）</th>
+                          <th>SDI</th>
+                          <th>判讀</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {finalAssessment?.map((r) => (
+                          <tr key={r.level}>
+                            <td>
+                              {r.level === "primary"
+                                ? "MAS-1／第一濃度"
+                                : "MAS-3／第二濃度"}
+                            </td>
+                            <td>{r.result.value}</td>
+                            <td>
+                              {r.min.toFixed(1)}～{r.max.toFixed(1)}
+                            </td>
+                            <td>
+                              {r.sdi.toFixed(r.level === "primary" ? 2 : 3)}
+                            </td>
+                            <td
+                              className={
+                                r.accepted
+                                  ? "lis-qc-accepted"
+                                  : "lis-qc-rejected"
+                              }
+                            >
+                              {r.accepted ? "本情境允收" : "未落在允收範圍"}
+                            </td>
+                          </tr>
                         ))}
-                      </select>
-                    </label>
-                    <button
-                      disabled={pending}
-                      onClick={() =>
-                        void act({ action: "run", target: runKind })
-                      }
-                    >
-                      執行選取作業
-                    </button>
-                  </div>
-                </>
-              )}
-              {workspace === "chart" && (
-                <>
-                  <LjCharts s={s} />
+                      </tbody>
+                    </table>
+                    <p role="status" data-testid="final-qc-interpretation">
+                      {finalAccepted
+                        ? `兩個 level 的 QC 結果（${finalAssessment!.map((r) => r.result.value).join("、")}）均落在本情境允收範圍內。`
+                        : "兩濃度 QC 結果尚待完成或未符合允收條件。"}
+                      {s.qcRecovered
+                        ? "已確認判讀，QC 恢復，回溯待完成。"
+                        : "請核對兩濃度結果，點選「確認判讀」後進入檢體回溯填報。"}
+                      常規病患檢體測試仍維持暫停，後續待主管審核／允收。
+                    </p>
+                    {button(
+                      "confirm-qc",
+                      "確認判讀",
+                      () => void act({ action: "confirm-qc" }),
+                      pending || s.qcRecovered || !finalAccepted,
+                    )}
+                  </section>
+                ) : (
                   <div className="lis-toolbar">
                     <label>
-                      確認本次判讀{" "}
+                      判讀規則{" "}
                       <select
+                        data-guide="rule"
                         aria-label="QC 規則判讀"
                         value={rule}
                         onChange={(e) => setRule(e.target.value)}
                       >
                         <option value="">請選擇</option>
-                        <option>1.2S</option>
-                        <option>1.3S</option>
-                        <option>2.2S</option>
+                        {["1.2S", "1.3S", "2.2S"].map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
                       </select>
                     </label>
-                    <button
-                      disabled={pending}
-                      onClick={() =>
-                        void act({ action: "confirm-rule", value: rule })
-                      }
-                    >
-                      確認判讀
-                    </button>
-                    <button onClick={() => go("factors")}>查看相關因素</button>
-                    <button onClick={() => setShowVerify(true)}>
-                      原杯重測身分核對
-                    </button>
-                  </div>
-                </>
-              )}
-              {workspace === "factors" && (
-                <>
-                  <p>依個別操作查看資料，不將待設定資料宣稱已通過期限核對。</p>
-                  {[
-                    [
-                      "qc",
-                      "品管液",
-                      "MAS chem-TRAK-H／MAS27091，批號27091。正式濃度代碼與瓶身效期待確認。",
-                    ],
-                    [
-                      "reagent",
-                      "UIBC 試劑",
-                      "本情境材料背景：新泡製試劑。實際瓶身批號、效期及正式槽位待設定。",
-                    ],
-                    [
-                      "calibration",
-                      "校正",
-                      "目錄既有對應：LCC2 → UIBC。校正申請與成功結果分開記錄。",
-                    ],
-                  ].map(([id, title, text]) => (
-                    <details key={id}>
-                      <summary>{title}</summary>
-                      <p>{text}</p>
-                      {id === "reagent" && (
-                        <img
-                          className="lis-reference"
-                          src={asset("real-photos/UIBC試劑瓶.jpg")}
-                          alt="本院UIBC試劑瓶實拍，非本次模擬批號核對證據"
-                        />
-                      )}
-                      <button
-                        disabled={pending}
-                        onClick={() =>
-                          void act({ action: "inspect", target: id })
-                        }
+                    <label>
+                      後續處理{" "}
+                      <select
+                        data-guide="followup"
+                        aria-label="QC 後續處理"
+                        value={followup}
+                        onChange={(e) => setFollowup(e.target.value)}
                       >
-                        已查看{title}資料
-                      </button>
-                      <span>
-                        {s.factors.includes(id)
-                          ? " 已查看（未知資料仍待確認）"
-                          : ""}
-                      </span>
-                    </details>
-                  ))}
-                </>
-              )}
-              {
-                <div hidden={workspace !== "calibration"}>
-                  <div className="lis-interlock" role="status">
-                    {s.reagent.checked && calibrationBlocked
-                      ? "UIBC 試劑已更換，請先完成校正。"
-                      : `校正狀態：${{ baseline: "情境初始校正", required: "需校正", running: "校正執行中", success: "校正成功；QC尚須獨立執行", failed: "校正失敗，攔截持續" }[s.calibration]}`}
+                        <option value="">請選擇</option>
+                        <option value="original">原杯品管液上機</option>
+                        <option value="troubleshoot">進行異常處理</option>
+                      </select>
+                    </label>
+                    {button(
+                      "confirm-rule",
+                      "確認判讀",
+                      () =>
+                        void act({
+                          action: "confirm-rule",
+                          value: rule,
+                          data: { followup },
+                        }),
+                    )}
+                    {button(
+                      "open-original",
+                      "原杯品管液上機",
+                      () =>
+                        void (async () => {
+                          if (await act({ action: "open-original" })) {
+                            setCup("cup-1");
+                            setRack("QC");
+                            setBatches(["QC"]);
+                            go("bench");
+                          }
+                        })(),
+                    )}
                   </div>
-                  <RackRequisition
-                    d={{ rack: s.rack, setRack: () => {} }}
-                    notify={setNotice}
-                    canStart
-                    exam={exam}
-                    disabled={pending}
-                    onEntry={(type, selection, category) =>
-                      act({
-                        action: "rack-entry",
-                        data: { type, selection, category },
-                      })
-                    }
-                    onQcEntry={(drafts) =>
-                      act({
-                        action: "rack-entry",
-                        data: {
-                          type: "Serum",
-                          category: "qc",
-                          selection: { ...s.rack.Serum, qc: drafts.Serum },
-                        },
-                      })
-                    }
-                  />
-                  <div className="lis-toolbar">
-                    <button onClick={() => go("bench")}>
-                      {exam ? "前往備料與上機" : "前往 LCC2／QC 備料與上機"}
-                    </button>
-                    <button
-                      disabled={pending}
-                      onClick={() =>
-                        void act({ action: "run", target: "calibration" })
-                      }
+                )}
+              </>
+            )}
+            {workspace === "factors" && (
+              <>
+                <p>未知瓶身資料仍待確認，查看不代表已通過期限核對。</p>
+                {[
+                  [
+                    "qc",
+                    "品管液",
+                    "MAS chem-TRAK-H／MAS27091／批號27091。MAS-1為本情境指定別名，不由H推定濃度。",
+                  ],
+                  [
+                    "reagent",
+                    "UIBC 試劑",
+                    "新泡製試劑背景，批號、效期、正式槽位與加入量待設定。",
+                  ],
+                  [
+                    "calibration",
+                    "校正",
+                    "本次情境指定LCC-1；正式材料對應待確認，未改寫完整目錄的LCC2資料。",
+                  ],
+                ].map(([id, name, text]) => (
+                  <details key={id} open={factor === id}>
+                    <summary
+                      data-guide={`factor-${id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setFactor(factor === id ? "" : id);
+                      }}
                     >
-                      執行 UIBC 校正
-                    </button>
-                    <button
-                      disabled={pending}
-                      onClick={() =>
-                        void act({ action: "run", target: "final" })
-                      }
-                    >
-                      執行兩濃度 QC
-                    </button>
-                  </div>
-                </div>
-              }
-              {workspace === "trace" && (
-                <TraceForm
-                  s={s}
-                  busy={pending}
-                  act={act}
-                  networkFailure={networkFailure}
-                />
-              )}
-              {workspace === "form" && (
-                <IncidentForm s={s} busy={pending} exam={exam} act={act} />
-              )}
-              {workspace === "sop" && (
-                <article className="lis-sop">
-                  <h2>本情境處理流程</h2>
-                  <p className="lis-abnormal">
-                    科內QC異常處理SOP原圖待補。本頁依本次文字情境建立，並非通用臨床處置規則。
-                  </p>
-                  <p>
-                    異常QC → 查看資料及原杯重測 → 本次仍異常 → 更換QC液並重測 →
-                    本次仍異常 → 舊R1／R2取出、R1a→R1與R2a→R2混勻及裝回 →
-                    Reagent Check → 重新校正 → 兩濃度QC →
-                    兩支檢體回溯、報告與表單 → 呈送待審核。
-                  </p>
-                  <p>
-                    一般分支：處置後須依結果重新判斷；本情境刻意設定更換品管液後仍異常，並非所有QC異常都須執行全部處置。
-                  </p>
-                  <p>
-                    UIBC需校正與QC異常處理是不同狀態。校正成功不等於QC合格；QC恢復不等於主管已同意恢復常規測試。
-                  </p>
-                  <p>
-                    可隨時查看既有結果；不要將審批、核對、上機及校正成功合併為同一完成旗標。
-                  </p>
-                </article>
-              )}
-              {workspace === "log" && (
-                <table aria-label="UIBC 操作紀錄">
-                  <thead>
-                    <tr>
-                      <th>序</th>
-                      <th>操作</th>
-                      <th>對象</th>
-                      <th>結果</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {s.log.map((row) => (
-                      <tr key={row.seq}>
-                        <td>{row.seq}</td>
-                        <td>{row.action}</td>
-                        <td>{row.target}</td>
-                        <td className={!row.ok ? "lis-abnormal" : ""}>
-                          {exam && !row.ok
-                            ? "操作未完成，交卷後提供檢核。"
-                            : row.message}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                      {name}
+                    </summary>
+                    <p>{text}</p>
+                    {id === "calibration" && (
+                      <p className="lis-calibration-reminder" role="note">
+                        檢查提醒：請檢查試劑校正效期、校正液效期與開封／泡製時間。
+                        未提供的日期與時間仍待確認，查看資料不代表已通過期限核對。
+                      </p>
+                    )}
+                    {id === "reagent" && (
+                      <img
+                        className="lis-reference"
+                        src={asset("real-photos/UIBC試劑瓶.jpg")}
+                        alt="UIBC試劑瓶實拍參考"
+                      />
+                    )}
+                    {button(
+                      `inspect-${id}`,
+                      `已查看${name}資料`,
+                      () => void act({ action: "inspect", target: id }),
+                    )}
+                    {s.factors.includes(id) && <span> 已查看</span>}
+                  </details>
+                ))}
+              </>
+            )}
+            <div hidden={workspace !== "calibration"}>
+              <p className="lis-interlock">
+                {s.reagent.checked && s.calibration !== "success"
+                  ? "UIBC 試劑已更換，請先完成校正。"
+                  : `校正狀態：${s.calibration}`}
+              </p>
+              <RackRequisition
+                d={{ rack: s.rack, setRack: () => {} }}
+                notify={setNotice}
+                canStart
+                exam={exam}
+                disabled={pending}
+                combined
+                onGuide={onRrGuide}
+                onCombinedEntry={(selection, type) =>
+                  act({ action: "batch-entry", data: { selection, type } })
+                }
+              />
+              <div className="lis-toolbar">
+                <button onClick={() => go("bench")}>前往備料與上機</button>
+              </div>
             </div>
-          </section>
-        }
+            <div hidden={workspace !== "management"}>
+              <TroubleReagentManagement
+                state={s}
+                busy={pending}
+                act={act}
+                onGuide={!exam ? onManagementGuide : undefined}
+              />
+            </div>
+            {workspace === "trace" && (
+              <TraceForm
+                s={s}
+                busy={pending}
+                act={act}
+                networkFailure={networkFailure}
+                onBrowse={onBrowse}
+              />
+            )}
+            {workspace === "form" && (
+              <IncidentForm
+                s={s}
+                busy={pending}
+                exam={exam}
+                act={act}
+                onGuide={!exam ? onPhraseGuide : undefined}
+              />
+            )}
+            {workspace === "sop" && <TroubleReferences />}
+            {workspace === "log" && (
+              <table aria-label="UIBC 操作紀錄">
+                <thead>
+                  <tr>
+                    <th>序</th>
+                    <th>操作</th>
+                    <th>對象</th>
+                    <th>結果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.log.map((r) => (
+                    <tr key={r.seq}>
+                      <td>{r.seq}</td>
+                      <td>{r.action}</td>
+                      <td>{r.target}</td>
+                      <td>
+                        {exam && !r.ok
+                          ? "操作未完成，交卷後提供檢核。"
+                          : r.message}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
+        {workspace === "bench" && (
+          <button
+            className="trouble-bench-note-toggle"
+            aria-expanded={benchNoteOpen}
+            aria-controls="uibc-bench-note"
+            hidden={exam}
+            onClick={() => setBenchNoteOpen(!benchNoteOpen)}
+          >
+            {benchNoteOpen ? "收合備料小抄" : "備料小抄"}
+          </button>
+        )}
         {workspace === "bench" && (
           <section
             className="trouble-tools hud-card"
             aria-label="UIBC 備料操作"
           >
             <h2>CALI／QC 備料</h2>
-            <p>容器與孔位為教學示意；分裝量、正式架位待設定。</p>
+            <p>分裝量、容器型號及正式架位待設定。原杯為杯1。</p>
             <div className="trouble-source-buttons">
-              {troubleMaterials.map((m) => (
+              {troubleMaterialsV2.map((m) => (
                 <button
                   key={m.id}
-                  aria-pressed={s.preparation.source === m.id}
+                  data-guide={`source-${m.id}`}
                   data-testid={`uibc-source-${m.id}`}
                   disabled={pending}
+                  aria-pressed={s.preparation.source === m.id}
                   onClick={() => {
-                    setReagentSelection(null);
+                    setSelection(null);
                     void prep("select", `source:${m.id}`);
                   }}
                 >
@@ -610,12 +706,13 @@ export default function TroubleshootingRoom({
               <br />
               移液器：
               {s.preparation.pipette
-                ? troubleCatalog[s.preparation.pipette.materialId].name
+                ? catalogV2[s.preparation.pipette.materialId]?.name
                 : "空"}
             </p>
             <label>
               容器{" "}
               <select
+                data-guide="cup"
                 aria-label="UIBC 備料容器"
                 value={cup}
                 onChange={(e) => {
@@ -627,52 +724,38 @@ export default function TroubleshootingRoom({
                   <option key={c.id} value={c.id}>
                     杯{i + 1}
                     {i === 0 ? "（原杯）" : ""} ·{" "}
-                    {c.materialId ? troubleCatalog[c.materialId].name : "空杯"}
+                    {c.materialId ? catalogV2[c.materialId]?.name : "空杯"}
                   </option>
                 ))}
               </select>
             </label>
             <p>
-              杯內來源：
+              杯內：
               {selectedCup.materialId
-                ? troubleCatalog[selectedCup.materialId].name
-                : "空"}{" "}
-              ·{" "}
+                ? catalogV2[selectedCup.materialId]?.name
+                : "空"}
+              ／
               {selectedCup.rack
                 ? `${selectedCup.rack} ${selectedCup.slot}`
                 : "工作台"}
             </p>
             <div className="trouble-grid">
-              <button disabled={pending} onClick={() => void prep("aspirate")}>
-                吸取來源液
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => void prep("dispense", cup)}
-              >
-                加入容器
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => void prep("discard-pipette")}
-              >
-                清空移液器
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => {
-                  if (
-                    window.confirm("清空選取杯子？此操作不會刪除已產生的結果。")
-                  )
-                    void prep("empty", cup);
-                }}
-              >
-                清空容器
-              </button>
+              {button("aspirate", "吸取來源液", () => void prep("aspirate"))}
+              {button("dispense", "加入容器", () => void prep("dispense", cup))}
+              {button(
+                "discard-pipette",
+                "清空移液器",
+                () => void prep("discard-pipette"),
+              )}
+              {button("empty-cup", "清空容器", () => {
+                if (window.confirm("清空此杯？歷史結果仍保留。"))
+                  void prep("empty", cup);
+              })}
             </div>
             <label>
               檢體架{" "}
               <select
+                data-guide="rack"
                 aria-label="UIBC 檢體架"
                 value={rack}
                 onChange={(e) => setRack(e.target.value as MaterialKind)}
@@ -685,95 +768,84 @@ export default function TroubleshootingRoom({
             <label>
               教學空位{" "}
               <select
+                data-guide="slot"
                 aria-label="UIBC 架位"
                 value={slot}
                 onChange={(e) => setSlot(Number(e.target.value))}
               >
                 {Array.from({ length: 10 }, (_, i) => (
                   <option key={i} value={i + 1}>
-                    {i + 1}
+                    {i + 1}{" "}
                     {s.preparation.cups.some(
                       (c) => c.rack === rack && c.slot === i + 1,
                     )
-                      ? " 已占用"
-                      : " 空位"}
+                      ? "已占用"
+                      : "空位"}
                   </option>
                 ))}
               </select>
             </label>
             <div className="trouble-grid">
-              <button
-                disabled={pending}
-                onClick={() => void prep("place", cup, { rack, slot })}
-              >
-                放入架位
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => void prep("unrack", cup)}
-              >
-                容器取回工作台
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => {
-                  setBenchView("loading");
-                  void prep("stage", undefined, { rack });
-                }}
-              >
-                放至進樣區
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => void prep("push", undefined, { rack })}
-              >
-                推入儀器
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => {
-                  setBenchView("bench");
-                  void prep("retrieve", undefined, { rack });
-                }}
-              >
-                取回檢體架
-              </button>
+              {button(
+                "place",
+                "放入架位",
+                () => void prep("place", cup, { rack, slot }),
+              )}
+              {button(
+                "unrack",
+                "容器取回工作台",
+                () => void prep("unrack", cup),
+              )}
+              {button(
+                "retrieve",
+                "取回檢體架",
+                () => void prep("retrieve", undefined, { rack }),
+              )}
+            </div>
+            <fieldset className="trouble-batch">
+              <legend>本次上機檢體架</legend>
+              {(["RB", "CALI", "QC"] as const).map((k) => (
+                <label key={k}>
+                  <input
+                    data-guide={`batch-${k}`}
+                    type="checkbox"
+                    aria-label={`本次上機 ${k}`}
+                    checked={batches.includes(k)}
+                    onChange={(e) =>
+                      setBatches((v) =>
+                        e.target.checked ? [...v, k] : v.filter((x) => x !== k),
+                      )
+                    }
+                  />
+                  {{ RB: "藍色 RB", CALI: "黃色 CALI", QC: "綠色 QC" }[k]}／
+                  {
+                    { bench: "工作台", entry: "進樣區", loaded: "已推入" }[
+                      s.preparation.racks[k].location
+                    ]
+                  }
+                </label>
+              ))}
+            </fieldset>
+            <div className="trouble-grid">
+              {button(
+                "batch-stage",
+                "放至進樣區",
+                () => void batch("batch-stage"),
+              )}
+              {button("batch-push", "推入儀器", () => void batch("batch-push"))}
+              {button(
+                "batch-retrieve",
+                "取回本次檢體架",
+                () => void batch("batch-retrieve"),
+              )}
               <button
                 onClick={() =>
-                  setBenchView(benchView === "loading" ? "bench" : "loading")
+                  setView(view === "loading" ? "bench" : "loading")
                 }
               >
                 切換備料／進樣視角
               </button>
             </div>
-            <p>
-              {rack}架：
-              {
-                { bench: "工作台", entry: "進樣區", loaded: "已推入" }[
-                  s.preparation.racks[rack].location
-                ]
-              }
-            </p>
-            <label>
-              模擬執行{" "}
-              <select
-                aria-label="備料後執行方式"
-                value={runKind}
-                onChange={(e) => setRunKind(e.target.value as RunKind)}
-              >
-                {Object.entries(runNames).map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              disabled={pending}
-              onClick={() => void act({ action: "run", target: runKind })}
-            >
-              執行上機作業
-            </button>
           </section>
         )}
         {workspace === "reagent" && (
@@ -782,136 +854,144 @@ export default function TroubleshootingRoom({
             aria-label="UIBC 試劑操作"
           >
             <h2>UIBC 試劑準備與更換</h2>
-            <button
-              onClick={() =>
-                setBenchView(benchView === "reagent" ? "bench" : "reagent")
-              }
-            >
-              切換配製工作台／儲存槽
-            </button>
-            <p>
-              選取物件：{reagentSelection || "尚未選取"}
-              。取出、加入、混勻與放入均需分別操作。
-            </p>
-            <label>
-              操作瓶別{" "}
-              <select
-                aria-label="UIBC 操作瓶別"
-                value={pair}
-                onChange={(e) => setPair(e.target.value as "R1" | "R2")}
-              >
-                <option>R1</option>
-                <option>R2</option>
-              </select>
-            </label>
-            <button
-              disabled={pending}
-              onClick={() => void act({ action: "remove-old", target: pair })}
-            >
-              取出舊 UIBC {pair}
-            </button>
-            <label>
-              加入來源{" "}
-              <select
-                aria-label="UIBC 加入來源"
-                value={aux}
-                onChange={(e) => setAux(e.target.value)}
-              >
-                <option>R1a</option>
-                <option>R2a</option>
-              </select>
-            </label>
             <div className="trouble-grid">
-              <button
-                disabled={pending}
-                onClick={() =>
-                  void act({ action: "pour", target: pair, value: aux })
-                }
-              >
-                加入選取來源至新瓶
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => void act({ action: "mix", target: pair })}
-              >
-                混勻新 UIBC {pair}
-              </button>
+              {(["main", "R1", "R2"] as const).map((k) =>
+                button(
+                  `cover-${k}`,
+                  `${s.covers?.[k] ? "關閉" : "打開"}${k === "main" ? "儀器" : k}上蓋`,
+                  () =>
+                    void act({
+                      action: "cover",
+                      target: k,
+                      value: s.covers?.[k] ? "close" : "open",
+                    }),
+                ),
+              )}
             </div>
-            <label>
-              目標儲存槽{" "}
-              <select
-                aria-label="UIBC 目標儲存槽"
-                value={bank}
-                onChange={(e) => setBank(e.target.value as "R1" | "R2")}
-              >
-                <option>R1</option>
-                <option>R2</option>
-              </select>
-            </label>
-            <div className="trouble-grid">
-              <button
-                disabled={pending}
-                onClick={() =>
-                  void act({ action: "install", target: pair, value: bank })
-                }
-              >
-                放入新 UIBC {pair}
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => void act({ action: "remove-new", target: pair })}
-              >
-                取回新瓶
-              </button>
-              <button
-                disabled={pending}
-                onClick={() => {
-                  if (window.confirm("重新準備這支新試劑？原操作紀錄仍保留。"))
-                    void act({ action: "reset-reagent", target: pair });
-                }}
-              >
-                重新準備此新瓶
-              </button>
+            {button(
+              "reagent-view",
+              view === "reagent" ? "切換配製工作台" : "切換儲存槽",
+              () => setView(view === "reagent" ? "bench" : "reagent"),
+              false,
+            )}
+            <p>點選3D瓶身或下列物件，顯示該物件的操作。</p>
+            <div className="trouble-source-buttons">
+              {["old-R1", "old-R2", "R1a", "R2a", "new-R1", "new-R2"].map(
+                (id) => (
+                  <button
+                    key={id}
+                    data-guide={`object-${id}`}
+                    aria-pressed={selection === `bottle:${id}`}
+                    onClick={() => pick(`bottle:${id}`)}
+                  >
+                    {id.replace("old-", "舊 UIBC ").replace("new-", "新 UIBC ")}
+                  </button>
+                ),
+              )}
             </div>
+            <section className="trouble-context" aria-label="選取物件操作">
+              <h3>
+                {key
+                  ? key.replace("old-", "舊 UIBC ").replace("new-", "新 UIBC ")
+                  : "尚未選取物件"}
+              </h3>
+              {key.startsWith("old-") &&
+                button(
+                  "remove-old",
+                  `取出舊 UIBC ${pair}`,
+                  () => void act({ action: "remove-old", target: pair }),
+                )}
+              {key.endsWith("a") && (
+                <div className="trouble-grid">
+                  {(["R1", "R2"] as const).map((k) =>
+                    button(
+                      `pour-${k}`,
+                      `加入 ${k}`,
+                      () => void act({ action: "pour", target: k, value: key }),
+                    ),
+                  )}
+                </div>
+              )}
+              {key.startsWith("new-") && (
+                <>
+                  <div className="trouble-grid">
+                    {button(
+                      "mix",
+                      "混和均勻",
+                      () => void act({ action: "mix", target: pair }),
+                    )}
+                    {button("install-open", "放入儀器", () => setInstall(true))}
+                    {button(
+                      "remove-new",
+                      "取回新瓶",
+                      () => void act({ action: "remove-new", target: pair }),
+                    )}
+                    {button("reset-reagent", "重新準備此新瓶", () => {
+                      if (window.confirm("重新準備此新瓶？操作紀錄保留。"))
+                        void act({ action: "reset-reagent", target: pair });
+                    })}
+                  </div>
+                  {install && (
+                    <>
+                      <label>
+                        儲存槽{" "}
+                        <select
+                          data-guide="bank"
+                          aria-label="UIBC 目標儲存槽"
+                          value={bank}
+                          onChange={(e) => setBank(e.target.value)}
+                        >
+                          <option>R1</option>
+                          <option>R2</option>
+                        </select>
+                      </label>
+                      {button(
+                        "install-confirm",
+                        "確認放入儀器",
+                        () =>
+                          void (async () => {
+                            if (
+                              await act({
+                                action: "install",
+                                target: pair,
+                                value: bank,
+                              })
+                            )
+                              setInstall(false);
+                          })(),
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </section>
             <dl>
-              {(["R1", "R2"] as const).map((p) => (
-                <div key={p}>
-                  <dt>{p}儲存槽</dt>
+              {(["R1", "R2"] as const).map((k) => (
+                <div key={k}>
+                  <dt>{k}儲存槽</dt>
                   <dd>
-                    {s.reagent.slots[p] || "空槽"} · 舊瓶
-                    {s.reagent.old[p] ? "仍在槽內" : "已取出"} · 加入
-                    {s.reagent.mix[p].source || "未執行"} ·{" "}
-                    {s.reagent.mix[p].mixed ? "已混勻" : "未混勻"}
+                    {s.reagent.slots[k] || "空槽"} · 加入{" "}
+                    {s.reagent.mix[k].source || "尚未加入"} ·{" "}
+                    {s.reagent.mix[k].mixed ? "已混和均勻" : "未混勻"}
                   </dd>
                 </div>
               ))}
             </dl>
-            <div className="lis-inline">
-              <b>Reagent Management · Details</b>
-              <p>UIBC／R1、R2　正式槽位：待設定</p>
-              <button
-                disabled={pending}
-                onClick={() => void act({ action: "reagent-check" })}
-              >
-                Reagent Check
-              </button>
-            </div>
-            <button
-              disabled={pending}
-              onClick={() => void act({ action: "replace-qc" })}
-            >
-              更換品管液來源瓶
-            </button>
-            <button onClick={() => go("bench")}>品管液分裝與重測</button>
-            <button onClick={() => go("calibration")}>進入校正申請</button>
+            <p className="lis-inline">
+              Reagent Check：
+              {s.reagent.checked
+                ? manualTroubleCheck(s)
+                  ? "手動檢查成功；需校正"
+                  : "自動檢查成功；需校正"
+                : "尚未完成"}
+            </p>
             <details>
               <summary>UIBC 試劑瓶實拍參考</summary>
               <img
                 className="lis-reference"
                 src={asset("real-photos/UIBC試劑瓶.jpg")}
-                alt="UIBC R1、R1a、R2、R2a實拍參考"
+                alt="UIBC瓶身外觀參考"
               />
-              <p>照片不作本次模擬批號及效期證據。</p>
             </details>
           </section>
         )}
@@ -920,6 +1000,60 @@ export default function TroubleshootingRoom({
         className={`trouble-hud hud-card ${collapsed ? "collapsed" : ""}`}
         aria-label="UIBC 任務資訊"
       >
+        {!exam && workspace === "bench" && benchNoteOpen && (
+          <section
+            id="uibc-bench-note"
+            className="trouble-bench-note"
+            aria-label="本次備料小抄"
+          >
+            <h2>本次操作小抄</h2>
+            {!s.runs.original ? (
+              <>
+                <p>將原杯 {catalogV2["uibc-primary"].name} 品管液重新上機。</p>
+                <p>使用杯 1 原杯，裝入綠色 QC 架，放至進樣區後推入儀器。</p>
+              </>
+            ) : s.runs.final ? (
+              <p>
+                {requiresQcConfirmation(s) && !s.qcRecovered
+                  ? "兩濃度 QC 已執行；請返回 L-J 圖核對允收範圍並確認判讀，再進行檢體回溯。"
+                  : "本次校正與兩濃度 QC 已執行；可查看結果並繼續檢體回溯。"}
+              </p>
+            ) : (
+              <>
+                <p>
+                  本次上機需要：
+                  {troubleBatchRequirements
+                    .map(([id]) => catalogV2[id].name)
+                    .join("、")}
+                  。
+                </p>
+                <ul>
+                  {troubleBatchRequirements.map(([id, kind]) => (
+                    <li key={id}>
+                      {catalogV2[id].name} →{" "}
+                      {
+                        {
+                          RB: "藍色 RB 架",
+                          CALI: "黃色 CALI 架",
+                          QC: "綠色 QC 架",
+                        }[kind]
+                      }
+                    </li>
+                  ))}
+                </ul>
+                <p>
+                  先完成 UIBC 試劑更換與 Reagent Check，再於 Rack Requisition
+                  登記 RB、Cal.、QC。選取來源 → 吸取 → 加入空杯 →
+                  裝架；選取三架，放至進樣區後同批推入。
+                </p>
+                <p>兩濃度 QC 請重新分裝至空杯，不沿用杯 1 原杯。</p>
+              </>
+            )}
+            <p className="trouble-gold-key">
+              金色外框＝杯內已有液體；不代表來源、架色或上機判定正確。分裝量與正式架位仍待設定。
+            </p>
+          </section>
+        )}
         <button onClick={() => setCollapsed(!collapsed)}>
           {collapsed ? "展開任務資訊" : "收合任務資訊"}
         </button>
@@ -930,48 +1064,31 @@ export default function TroubleshootingRoom({
                 ? "本次訓練操作完成"
                 : exam
                   ? "障礙排除作答中"
-                  : `步驟 ${current + 1}／12`}
+                  : `步驟 ${step + 1}／12`}
             </h2>
             <p className="trouble-warning">
               UIBC 常規病患檢體測試：暫停。僅允許本情境受控回溯。
             </p>
-            {calibrationBlocked && (
+            {s.reagent.checked && s.calibration !== "success" && (
               <p className="trouble-interlock">
                 UIBC 試劑已更換，請先完成校正。
               </p>
             )}
-            {s.qcRecovered && (
-              <p>
-                QC恢復，
-                {s.submission === "sent-awaiting-review"
-                  ? "已呈送待審核"
-                  : "回溯／填報待完成"}
-                。
-              </p>
-            )}
+            {s.qcRecovered && <p>QC恢復，回溯／填報待完成。</p>}
             {s.submission === "sent-awaiting-review" && (
-              <strong className="trouble-warning">
-                待主管審核／允收；未核准恢復常規檢體測試。
-              </strong>
+              <strong>已呈送，待審核／待主管審核／允收</strong>
             )}
             {!exam && (
               <>
-                <p className="trouble-hint">
-                  {done
-                    ? "本次訓練操作完成；呈送不代表主管核准。"
-                    : hints[current]}
+                <p className="trouble-hint" aria-live="polite">
+                  {next?.text ||
+                    (pending
+                      ? moving
+                        ? "試劑瓶取放中，請稍候。"
+                        : "模擬執行或保存中，請稍候。"
+                      : "本次訓練操作完成；呈送不代表主管核准。")}
                 </p>
-                <button
-                  onClick={() =>
-                    go(
-                      current === 4 && !s.runs.fresh
-                        ? "reagent"
-                        : routes[current],
-                    )
-                  }
-                >
-                  定位目前操作
-                </button>
+                <button onClick={locate}>定位目前操作</button>
                 <details open>
                   <summary>十二步任務紀錄</summary>
                   <ol>
@@ -987,110 +1104,33 @@ export default function TroubleshootingRoom({
               </>
             )}
             {exam && (
-              <p>可主動查看原始結果、標籤與SOP。作答中不顯示檢核明細。</p>
+              <p>可主動查看原始結果、標籤與SOP，作答中不顯示檢核明細。</p>
             )}
             <p role={networkFailure ? "alert" : "status"}>
               {busy
                 ? "保存中…"
-                : s.pending
-                  ? "模擬執行中…"
-                  : feedback || notice || "操作驅動進度；資料均為教學模擬。"}
+                : moving
+                  ? "試劑瓶取放中…"
+                  : s.pending
+                    ? "模擬執行中…"
+                    : feedback || notice || "操作驅動進度；資料均為教學模擬。"}
             </p>
-            {onRetry && (
-              <button disabled={busy} onClick={onRetry}>
-                重試保存
-              </button>
-            )}
+            {onRetry && button("retry", "重試保存", onRetry, busy)}
             <button onClick={() => go("log")}>檢視操作紀錄</button>
             <button onClick={() => go("sop")}>查看 SOP</button>
-            {onReset && (
-              <button
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "重新開始UIBC情境？本次模擬資料將清除，其他任務不受影響。",
-                    )
-                  )
+            {onReset &&
+              button(
+                "restart",
+                "重新開始本情境",
+                () => {
+                  if (window.confirm("重新開始UIBC情境？其他任務不受影響。"))
                     onReset();
-                }}
-              >
-                重新開始本情境
-              </button>
-            )}
+                },
+                false,
+              )}
           </>
         )}
       </aside>
-      <dialog
-        ref={verify}
-        className="lis-verify-dialog"
-        aria-label="原杯身分核對"
-        onCancel={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setShowVerify(false);
-        }}
-      >
-        <header>原杯品管重新上機</header>
-        <label>
-          項目{" "}
-          <select
-            aria-label="原杯項目"
-            value={test}
-            onChange={(e) => setTest(e.target.value)}
-          >
-            <option>UIBC</option>
-            <option>ALT</option>
-          </select>
-        </label>
-        <label>
-          標本號{" "}
-          <select
-            aria-label="原杯標本號"
-            value={specimen}
-            onChange={(e) => setSpecimen(e.target.value)}
-          >
-            <option>MAS27091</option>
-            <option>第二濃度（待設定）</option>
-          </select>
-        </label>
-        <label>
-          容器{" "}
-          <select
-            aria-label="原杯容器"
-            value={originalCup}
-            onChange={(e) => setOriginalCup(e.target.value)}
-          >
-            {s.preparation.cups.map((c, i) => (
-              <option key={c.id} value={c.id}>
-                杯{i + 1}
-                {i === 0 ? "／原杯" : "／其他容器"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p>
-          品管液：MAS chem-TRAK-H。核對後仍須裝架、進樣與推入，才能執行重測。
-        </p>
-        <footer>
-          <button onClick={() => setShowVerify(false)}>取消</button>
-          <button
-            disabled={pending}
-            onClick={async () => {
-              if (
-                await act({
-                  action: "verify-original",
-                  data: { test, specimen, cup: originalCup },
-                })
-              ) {
-                setShowVerify(false);
-                go("bench");
-              }
-            }}
-          >
-            核對並前往裝架
-          </button>
-        </footer>
-      </dialog>
     </section>
   );
 }

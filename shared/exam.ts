@@ -4,6 +4,9 @@ import {
   applyTroubleshooting,
   troubleChecks,
   troubleVersion,
+  legacyTroubleVersion,
+  previousTroubleVersion,
+  manualTroubleVersion,
   type TroubleState,
   type TroubleAction,
 } from "./troubleshooting.ts";
@@ -92,6 +95,12 @@ export const versionForKind = (kind: ExamKind) =>
       : troubleVersion;
 export const supportsVersion = (kind: ExamKind, version: string) =>
   version === versionForKind(kind) ||
+  (kind === "troubleshooting" &&
+    [
+      legacyTroubleVersion,
+      previousTroubleVersion,
+      manualTroubleVersion,
+    ].includes(version)) ||
   (kind !== "troubleshooting" &&
     (version === rubricVersion ||
       (kind === "daily" &&
@@ -294,8 +303,13 @@ export function initialEngine(version = dailyRubricVersion): EngineState {
     skippedMs: 0,
     waitStarted: 0,
     sim: {
-      ...(version === troubleVersion
-        ? { troubleshooting: initialTroubleshooting() }
+      ...([
+        troubleVersion,
+        manualTroubleVersion,
+        previousTroubleVersion,
+        legacyTroubleVersion,
+      ].includes(version)
+        ? { troubleshooting: initialTroubleshooting(version) }
         : {}),
       ...(hasPreparation(version) ? { preparation: initialPreparation() } : {}),
       ...(hasDailyTasks(version) ? { dailyTasks: initialDailyTasks() } : {}),
@@ -1353,7 +1367,12 @@ export function applyCommand(
   if (kind === "troubleshooting") {
     const state = advanceEngine(input, now);
     if (
-      version !== troubleVersion ||
+      ![
+        troubleVersion,
+        previousTroubleVersion,
+        manualTroubleVersion,
+        legacyTroubleVersion,
+      ].includes(version) ||
       !state.sim.troubleshooting ||
       c.type !== "troubleshooting"
     )
