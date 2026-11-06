@@ -9,6 +9,7 @@ data/
 *.sqlite-wal
 .env
 .env.*
+!.env.example
 
 artifacts/hud/
 
@@ -16,3 +17,4 @@ artifacts/workstation-v5/
 artifacts/real-photos/
 artifacts/preparation/
 artifacts/troubleshooting/
+artifacts/accounts/

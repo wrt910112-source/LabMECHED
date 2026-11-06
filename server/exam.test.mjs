@@ -1,3 +1,4 @@
+import { seedAccount } from "./account-fixture.mjs";
 import {
   legacyDailyV4,
   legacyWeeklyV2,
@@ -480,39 +481,12 @@ test("SQLite persistence, ownership, disable/reset, event replay, immutable subm
     learner = await client(app, port),
     other = await client(app, port);
   try {
-    assert.equal((await admin("/auth/status")).value.needsSetup, true);
-    assert.equal(
-      (
-        await admin("/auth/setup", "POST", {
-          username: "teacher",
-          name: "教師",
-          password: "Testing123!",
-        })
-      ).status,
-      201,
-    );
-    assert.equal(
-      (
-        await other("/auth/setup", "POST", {
-          username: "otherteacher",
-          name: "教師2",
-          password: "Testing123!",
-        })
-      ).status,
-      409,
-    );
-    const student = (
-      await admin("/admin/users", "POST", {
-        username: "student",
-        name: "學員",
-        password: "Testing123!",
-      })
-    ).value.user;
-    await admin("/admin/users", "POST", {
-      username: "student2",
-      name: "學員2",
-      password: "Testing123!",
-    });
+    assert.equal((await admin("/auth/status")).value.requiresInitialization, true);
+    await seedAccount(app.db);
+    await admin("/auth/login", "POST", { username: "teacher", password: "Testing123!" });
+    assert.equal((await other("/auth/setup", "POST", {})).status, 404);
+    const student = { id: await seedAccount(app.db, "student", "learner") };
+    await seedAccount(app.db, "student2", "learner");
     assert.equal(
       (
         await learner("/auth/login", "POST", {
@@ -529,14 +503,14 @@ test("SQLite persistence, ownership, disable/reset, event replay, immutable subm
     assert.equal((await learner("/admin/users")).status, 403);
     assert.equal(
       (await learner("/attempts", "POST", { kind: "biweekly" })).status,
-      400,
+      403,
     );
     const started = (
       await learner("/attempts", "POST", { kind: "daily", score: 100 })
     ).value.attempt;
     assert.equal(
       (await learner("/attempts", "POST", { kind: "weekly" })).status,
-      409,
+      403,
     );
     assert.equal((await other(`/attempts/${started.id}`)).status, 404);
     assert.equal(
@@ -610,7 +584,7 @@ test("SQLite persistence, ownership, disable/reset, event replay, immutable subm
     );
     assert.equal((await other("/attempts")).value.attempts.length, 0);
     const csv = await admin("/admin/export");
-    assert.match(csv.value, /學員/);
+    assert.match(csv.value, /student/);
     assert.match(csv.value, new RegExp(`"${submitted.result.score}"`));
     assert.equal(
       (await admin(`/admin/users/${student.id}`, "PATCH", { enabled: false }))
@@ -627,10 +601,10 @@ test("SQLite persistence, ownership, disable/reset, event replay, immutable subm
       ).status,
       401,
     );
-    await admin(`/admin/users/${student.id}`, "PATCH", {
-      enabled: true,
-      password: "Changed123!",
-    });
+    await admin(`/admin/users/${student.id}`, "PATCH", { enabled: true });
+    const reset = await admin(`/admin/users/${student.id}/reset-password`, "POST", {});
+    await learner("/auth/login", "POST", { username: "student", password: reset.value.temporaryPassword });
+    await learner("/auth/change-password", "POST", { currentPassword: reset.value.temporaryPassword, newPassword: "Changed123!" });
     assert.equal(
       (
         await learner("/auth/login", "POST", {
@@ -649,7 +623,7 @@ test("SQLite persistence, ownership, disable/reset, event replay, immutable subm
       ).status,
       200,
     );
-    const active = (await learner("/attempts", "POST", { kind: "weekly" }))
+    const active = (await learner("/attempts", "POST", { kind: "daily" }))
       .value.attempt;
     await app.close();
     app = createApplication({ dbPath });
@@ -689,11 +663,8 @@ test("concurrent event requests respect revision and concurrent submissions retu
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   const request = await client(app, app.server.address().port);
   try {
-    await request("/auth/setup", "POST", {
-      username: "teacher",
-      name: "教師",
-      password: "Testing123!",
-    });
+    await seedAccount(app.db);
+    await request("/auth/login", "POST", { username: "teacher", password: "Testing123!" });
     const a = (await request("/attempts", "POST", { kind: "daily" })).value
       .attempt;
     const operations = await Promise.all(
@@ -734,11 +705,8 @@ test("API versions new daily attempts separately and resumes a v1 attempt withou
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   const request = await client(app, app.server.address().port);
   try {
-    await request("/auth/setup", "POST", {
-      username: "teacher",
-      name: "教師",
-      password: "Testing123!",
-    });
+    await seedAccount(app.db);
+    await request("/auth/login", "POST", { username: "teacher", password: "Testing123!" });
     const a = (await request("/attempts", "POST", { kind: "daily" })).value
       .attempt;
     assert.equal(a.version, dailyRubricVersion);
@@ -783,11 +751,8 @@ test("API resumes a real v2 state and freezes its result while new attempts rece
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   const request = await client(app, app.server.address().port);
   try {
-    await request("/auth/setup", "POST", {
-      username: "teacher",
-      name: "教師",
-      password: "Testing123!",
-    });
+    await seedAccount(app.db);
+    await request("/auth/login", "POST", { username: "teacher", password: "Testing123!" });
     const a = (await request("/attempts", "POST", { kind: "daily" })).value
       .attempt;
     app.db
@@ -834,19 +799,15 @@ test("API resumes a real v2 state and freezes its result while new attempts rece
   }
 });
 
-test("API retains active v4 / weekly v2 scenarios and freezes old results across v5 / weekly v3 rollout", async () => {
+test("API retains active daily v4 and freezes old results across later daily rollout", async () => {
   const app = createApplication({ dbPath: ":memory:" });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   const request = await client(app, app.server.address().port);
   try {
-    await request("/auth/setup", "POST", {
-      username: "teacher",
-      name: "教師",
-      password: "Testing123!",
-    });
+    await seedAccount(app.db);
+    await request("/auth/login", "POST", { username: "teacher", password: "Testing123!" });
     for (const [kind, oldVersion, newVersion] of [
       ["daily", legacyDailyV4, dailyRubricVersion],
-      ["weekly", legacyWeeklyV2, currentWeeklyVersion],
     ]) {
       const created = (await request("/attempts", "POST", { kind })).value
         .attempt;

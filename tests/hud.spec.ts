@@ -1,8 +1,13 @@
+import { practiceAccount } from "./practice-account";
 import { test, expect, type Page } from "@playwright/test";
 async function part(page: Page, id: string) {
   await page.getByRole("button", { name: "部件目錄", exact: true }).click();
   await page.getByTestId(`part-${id}`).click();
 }
+test.beforeEach(async ({ page }) => {
+  await practiceAccount(page);
+});
+
 test("scene HUD starts in exploration and selection is separate from camera and contextual doors", async ({
   page,
 }, info) => {
@@ -170,6 +175,10 @@ test("selection, panel wheel and drag do not move the camera or advance tasks", 
 test("weekly guidance respects parallel tasks, prerequisites and separate practice sessions", async ({
   page,
 }) => {
+  test.skip(
+    true,
+    "首波關閉周保養入口；保留操作測試待重新開放，另以 API／入口測試驗證限制。",
+  );
   await page.goto("/");
   await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await page.locator(".mission-tile").nth(1).click();

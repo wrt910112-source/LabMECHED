@@ -1,3 +1,4 @@
+import { practiceAccount } from "./practice-account";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { selectPart } from "./ui";
@@ -29,6 +30,10 @@ async function target(page: Page, id: string) {
     await targets.locator("summary").click();
   await page.getByTestId(`target-${id}`).click();
 }
+
+test.beforeEach(async ({ page }) => {
+  await practiceAccount(page);
+});
 
 test("all twenty-three supplied photographs load in their component albums with original filenames", async ({
   page,

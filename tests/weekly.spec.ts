@@ -1,4 +1,10 @@
+import { isTaskOpen } from "../shared/availability";
 import { test, expect } from "@playwright/test";
+test.skip(
+  !isTaskOpen("weekly"),
+  "首波未開放周保養，操作規則仍由共用 reducer 測試覆蓋。",
+);
+
 test("weekly maintenance completes with independent probe, rod, W2 and restoration gates", async ({
   page,
 }, info) => {

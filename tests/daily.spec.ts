@@ -1,7 +1,12 @@
+import { practiceAccount } from "./practice-account";
 import { fillPreparationUI, preparationShot } from "./preparation-ui";
 import { instrument, closeProgram, cups, iseDrain, replaceAll } from "./ui";
 import { prepareDailyTasks } from "./daily-fixture";
 import { test, expect } from "@playwright/test";
+test.beforeEach(async ({ page }) => {
+  await practiceAccount(page);
+});
+
 test("daily maintenance sequence, prerequisites, six probes, calibration and paired reagents", async ({
   page,
 }, info) => {

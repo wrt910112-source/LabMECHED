@@ -16,6 +16,7 @@ import { referencePhotos, type PhotoSelection } from "./realPhotos";
 import { dailySteps } from "../shared/dailyTasks";
 import { weeklyStepNames } from "./WeeklyTraining";
 import type { Quest } from "./hudTasks";
+import { isTaskOpen } from "../shared/availability";
 export type TaskKind = "daily" | "weekly";
 export type MissionKind = TaskKind | "troubleshooting";
 export function TaskCenter({
@@ -37,7 +38,7 @@ export function TaskCenter({
     [confirm, setConfirm] = useState(false);
   useEffect(() => {
     if (open && !ref.current?.open) {
-      setKind(initialKind);
+      setKind(isTaskOpen(initialKind) ? initialKind : "daily");
       setConfirm(false);
       ref.current?.showModal();
     }
@@ -68,7 +69,7 @@ export function TaskCenter({
           <button
             key={name}
             className="mission-tile"
-            disabled={i === 2}
+            disabled={i === 1 || i === 2}
             aria-pressed={
               i !== 2 &&
               kind ===
@@ -90,11 +91,13 @@ export function TaskCenter({
             />
             <h3>{name}</h3>
             <p>
-              {i < 2
-                ? `${i === 0 ? dailySteps.length : weeklyStepNames.length} 組既有保養任務`
-                : i === 3
-                  ? "UIBC 品管異常：從判讀到回溯 · 12步"
-                  : "尚未開放"}
+              {i === 1
+                ? "首波暫未開放，歷史紀錄保留"
+                : i < 2
+                  ? `${i === 0 ? dailySteps.length : weeklyStepNames.length} 組既有保養任務`
+                  : i === 3
+                    ? "UIBC 品管異常：從判讀到回溯 · 12步"
+                    : "尚未開放"}
             </p>
           </button>
         ))}
@@ -102,7 +105,8 @@ export function TaskCenter({
       <div className="mission-modes">
         <button aria-pressed={!exam} onClick={() => setExam(false)}>
           <GraduationCap />
-          練習模式<small>保留現有流程，提供操作目標與進度</small>
+          練習模式
+          <small>提供操作目標；只保留本頁會話，尚未支援跨登入保存</small>
         </button>
         <button aria-pressed={exam} onClick={() => setExam(true)}>
           <ClipboardList />

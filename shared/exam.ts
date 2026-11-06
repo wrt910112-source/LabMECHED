@@ -122,6 +122,13 @@ export type User = {
   name: string;
   role: "administrator" | "learner";
   enabled: boolean;
+  learnerCode: string;
+  mustChangePassword: boolean;
+  profileComplete: boolean;
+  cohortId: string | null;
+  profile: import("./accounts.ts").LearnerProfile | null;
+  profileVersion: string;
+  profileUpdatedAt: number | null;
 };
 export type ActionType =
   | "daily-syringe"
@@ -280,6 +287,9 @@ export interface ExamResult {
   badges: string[];
 }
 export interface Attempt {
+  readOnly?: boolean;
+  backgroundSnapshot?: import("./accounts.ts").LearnerBackgroundSnapshot | null;
+  backgroundVersion?: string | null;
   preparationAccess?: ReturnType<typeof preparationGate>;
   id: string;
   userId: string;
@@ -293,7 +303,7 @@ export interface Attempt {
   result: ExamResult | null;
   progress?: { completedGroups: number; totalGroups: number };
   events?: ExamEvent[];
-  user?: User;
+  user?: Pick<User, "id" | "username" | "name" | "role" | "enabled">;
 }
 
 export function initialEngine(version = dailyRubricVersion): EngineState {

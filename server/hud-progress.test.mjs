@@ -1,3 +1,4 @@
+import { seedAccount } from "./account-fixture.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -94,11 +95,8 @@ test("active attempt API exposes aggregate progress only and viewing it does not
     return response.json();
   }
   try {
-    await request("/auth/setup", {
-      username: "teacher",
-      name: "Teacher",
-      password: "Testing123!",
-    });
+    await seedAccount(app.db);
+    await request("/auth/login", { username: "teacher", password: "Testing123!" });
     const { attempt } = await request("/attempts", { kind: "daily" });
     assert.deepEqual(attempt.progress, { completedGroups: 0, totalGroups: 13 });
     assert.equal(attempt.result, null);

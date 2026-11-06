@@ -1,0 +1,428 @@
+.account-portal {
+  max-width: none;
+  border-color: #527184;
+  border-radius: 8px;
+  color: #e5f0f7;
+  background:
+    radial-gradient(ellipse at 65% 0%, #33516480, transparent 65%), #101e2b;
+}
+.account-portal .exam-header {
+  background: #102532;
+  border-bottom: 1px solid #476779;
+  color: #e5f0f7;
+}
+.account-portal .exam-nav {
+  background: #172f3e;
+  border-bottom: 1px solid #446172;
+  flex-wrap: wrap;
+}
+.account-portal button,
+.account-dialog button {
+  color: #d7edf5;
+  background: #1d384a;
+  border: 1px solid #5e8197;
+  border-radius: 6px;
+  padding: 10px 14px;
+  min-height: 42px;
+}
+.account-portal button:hover:not(:disabled),
+.account-dialog button:hover:not(:disabled) {
+  background: #295166;
+}
+.account-portal .exam-primary,
+.account-dialog .exam-primary {
+  color: #082b3d;
+  background: #70d9ee;
+  border-color: #a0e9f4;
+  font-weight: 700;
+}
+.account-portal button[aria-pressed="true"] {
+  color: #83e2f4;
+  border-color: #75d9f3;
+  background: #234f63;
+}
+.account-portal input,
+.account-portal select,
+.account-dialog input,
+.account-dialog select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #6a869a;
+  border-radius: 5px;
+  padding: 9px 11px;
+  color: #e6f1f8;
+  background: #172b3c;
+  font: inherit;
+}
+.account-portal input:focus-visible,
+.account-portal select:focus-visible,
+.account-dialog input:focus-visible,
+.account-dialog select:focus-visible {
+  outline: 3px solid #55eaff;
+  outline-offset: 2px;
+}
+.exam-portal.account-portal input:not([type="checkbox"]) {
+  background: #172b3c;
+  color: #e6f1f8;
+  border-color: #6a869a;
+}
+.exam-portal.account-portal .account-admin table,
+.exam-portal.account-portal .account-dialog table {
+  background: #1b3244;
+  color: #e5f0f7;
+}
+.exam-portal.account-portal .account-admin th,
+.exam-portal.account-portal .account-dialog th {
+  background: #1a2e41;
+  color: #d0e2ee;
+}
+.exam-portal.account-portal .account-admin td,
+.exam-portal.account-portal .account-dialog td {
+  color: #e5f0f7;
+}
+.exam-portal.account-portal .account-admin td small {
+  display: block;
+}
+.account-portal .exam-card {
+  background: #1a3042;
+  color: #e5f0f7;
+  border-color: #527083;
+}
+.account-portal .exam-login-wrap {
+  align-items: center;
+  background: linear-gradient(125deg, #0c1c2be8, #1b4057ba);
+}
+.account-portal .exam-login-copy h1 {
+  color: #eef6ff;
+}
+.account-portal .exam-login-copy p,
+.account-portal .exam-login-copy .exam-feature {
+  color: #b2d0df;
+}
+.account-portal .exam-error,
+.account-error {
+  color: #ffcbc2;
+  background: #632f344d;
+  border: 1px solid #b97d70;
+  padding: 12px;
+  border-radius: 6px;
+}
+.account-page-heading {
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.account-page-heading h1,
+.account-profile h1 {
+  font-size: clamp(24px, 2.1vw, 34px);
+  margin: 8px 0;
+  color: #eff8ff;
+}
+.account-page-heading p {
+  color: #b6cddd;
+}
+.account-page-heading > div:last-child {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.account-panel {
+  background: linear-gradient(145deg, #263c4ddd, #132837ee);
+  border: 1px solid #56788f;
+  border-radius: 9px;
+  padding: 22px;
+  min-width: 0;
+}
+.account-panel h2 {
+  font-size: 20px;
+  margin-top: 0;
+}
+.account-filters {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(5, minmax(100px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.account-filters label,
+.account-profile label,
+.account-password label,
+.account-dialog label,
+.account-details label {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0;
+  color: #d4e5ef;
+}
+.account-management-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.account-list {
+  padding: 0;
+  overflow: hidden;
+}
+.account-table-scroll {
+  max-width: 100%;
+  overflow: auto;
+}
+.account-admin table,
+.account-dialog table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.account-admin th,
+.account-admin td,
+.account-dialog th,
+.account-dialog td {
+  border-bottom: 1px solid #4b6175;
+  padding: 12px 10px;
+  white-space: nowrap;
+}
+.account-admin th,
+.account-dialog th {
+  background: #1a2e41;
+  color: #d0e2ee;
+}
+.account-admin tr[aria-selected="true"] {
+  background: #28556b;
+  outline: 1px solid #6ad8ed;
+  outline-offset: -2px;
+}
+.account-admin td button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+}
+.account-admin td small {
+  display: block;
+  color: #b4cbdc;
+  font-size: 12px;
+}
+.account-status.enabled {
+  color: #6ae2b1;
+}
+.account-status.disabled {
+  color: #ffb0a9;
+}
+.account-details h2 {
+  font-size: 25px;
+}
+.account-details dl {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 10px;
+  padding: 16px 0;
+  border-top: 1px solid #4b6c7f;
+}
+.account-details dt {
+  color: #aac6da;
+}
+.account-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 15px 0;
+}
+.account-portal .account-danger {
+  border-color: #d78b83;
+  color: #ffc0b6;
+}
+.account-secondary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  margin: 22px 0;
+}
+.account-secondary-grid p,
+.account-details > p:last-child {
+  color: #bed2df;
+  line-height: 1.7;
+}
+.account-profile {
+  max-width: 1120px;
+  margin: 12px auto;
+}
+.account-profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin: 28px 0;
+}
+.account-profile-grid section {
+  min-width: 0;
+}
+.account-profile-grid > section + section {
+  border-left: 1px solid #537086;
+  padding-left: 30px;
+}
+.account-identity,
+.account-research {
+  padding: 12px 16px;
+  border: 1px solid #53768d;
+  border-radius: 7px;
+  margin-bottom: 20px;
+  color: #bfd6e5;
+}
+.account-profile fieldset {
+  border: 1px solid #4e6e85;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 18px 0;
+  min-width: 0;
+}
+.account-profile fieldset p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #bfd1de;
+}
+.account-tenure {
+  display: flex;
+  gap: 16px;
+}
+.account-tenure label {
+  width: 130px;
+}
+.account-profile .account-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 35px;
+}
+.account-check input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  accent-color: #5fddf0;
+}
+.account-profile footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid #527184;
+  padding-top: 20px;
+}
+.account-password {
+  max-width: 600px;
+  margin: 30px auto;
+}
+.account-dialog {
+  color: #e5f0f7;
+  background: #162c3d;
+  border: 1px solid #6a899d;
+  border-radius: 8px;
+  width: min(900px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  padding: 20px;
+  overflow: auto;
+}
+.account-dialog::backdrop {
+  background: #071421c9;
+  backdrop-filter: blur(4px);
+}
+.account-dialog header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid #547184;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+}
+.account-dialog header h2 {
+  font-size: 22px;
+  margin: 0;
+}
+.account-dialog .account-panel {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.account-dialog code {
+  user-select: all;
+  color: #a3edff;
+  font-size: 16px;
+}
+@media (max-width: 1250px) {
+  .account-filters {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .account-management-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .account-portal {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .account-portal .exam-header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 64px;
+    gap: 8px;
+    padding: 12px;
+  }
+  .account-portal .exam-header strong {
+    font-size: 17px;
+  }
+  .account-portal .exam-header strong span {
+    display: none;
+  }
+  .account-portal .exam-header > div {
+    flex-wrap: wrap;
+  }
+  .account-portal .exam-scroll {
+    padding: 12px;
+  }
+  .account-portal .exam-login-wrap {
+    display: block;
+    overflow: auto;
+    padding: 14px;
+  }
+  .account-portal .exam-login-copy {
+    display: none;
+  }
+  .account-portal .exam-login {
+    max-width: none;
+    width: 100%;
+  }
+  .account-management-grid,
+  .account-secondary-grid,
+  .account-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .account-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .account-page-heading {
+    display: block;
+  }
+  .account-profile {
+    padding: 16px;
+    margin: 0;
+  }
+  .account-profile-grid {
+    gap: 15px;
+  }
+  .account-profile-grid > section + section {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid #537086;
+    padding-top: 15px;
+  }
+  .account-dialog {
+    padding: 14px;
+  }
+}

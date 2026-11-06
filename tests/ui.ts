@@ -1,3 +1,4 @@
+import { practiceAccount } from "./practice-account";
 import { expect, type Page, type Locator } from "@playwright/test";
 /** Follow the HUD navigation; selection itself intentionally never moves the camera. */
 export async function selectPart(page: Page, id: string, bottles = false) {
@@ -18,6 +19,7 @@ export async function selectPart(page: Page, id: string, bottles = false) {
   }
 }
 export async function startDaily(page: Page) {
+  await practiceAccount(page);
   const exit = page.getByRole("button", { name: "退出螢幕 ×", exact: true });
   if (await exit.isVisible()) await exit.click();
   await page.getByRole("button", { name: "任務中心", exact: true }).click();

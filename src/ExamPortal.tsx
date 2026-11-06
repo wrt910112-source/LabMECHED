@@ -28,13 +28,22 @@ import {
 import ExamRoom from "./ExamRoom";
 import { TroubleshootingExam } from "./TroubleRuntime";
 import "./exam.css";
+import "./accounts.css";
+import AdminAccounts from "./AdminAccounts";
+import { ProfileForm, PasswordChange } from "./AccountProfile";
+import {
+  useAccountSession,
+  setSessionUser,
+  refreshAccountSession,
+} from "./accountSession";
+import { isTaskOpen } from "../shared/availability";
 
 export const duration = (ms: number) => {
   const seconds = Math.floor(ms / 1000);
   return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
 };
 const stamp = (time: number) => new Date(time).toLocaleString("zh-TW");
-type PortalPage = "menu" | "history" | "admin";
+type PortalPage = "menu" | "history" | "admin" | "profile" | "password";
 
 export default function ExamPortal({
   open,
@@ -48,9 +57,9 @@ export default function ExamPortal({
   onSceneActive?: (active: boolean) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [user, setUser] = useState<User | null>(null),
-    [needsSetup, setNeedsSetup] = useState(false),
-    [loading, setLoading] = useState(true);
+  const { user, requiresInitialization } = useAccountSession();
+  const setUser = setSessionUser;
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(""),
     [pending, setPending] = useState(false),
     [page, setPage] = useState<PortalPage>("menu");
@@ -68,7 +77,7 @@ export default function ExamPortal({
         "/auth/status",
       );
       setUser(status.user);
-      setNeedsSetup(status.needsSetup);
+
       if (status.user) {
         const [active, past] = await Promise.all([
           api<{ attempt: Attempt | null }>("/attempts/active"),
@@ -76,7 +85,7 @@ export default function ExamPortal({
         ]);
         setAttempt(active.attempt);
         setHistory(past.attempts);
-        setPage("menu");
+        setPage(status.user.role === "administrator" ? "admin" : "menu");
       } else {
         setAttempt(null);
         setHistory([]);
@@ -111,7 +120,7 @@ export default function ExamPortal({
     const fields = new FormData(e.currentTarget),
       form = e.currentTarget;
     await task(async () => {
-      await api(needsSetup ? "/auth/setup" : "/auth/login", {
+      await api("/auth/login", {
         method: "POST",
         body: Object.fromEntries(fields),
       });
@@ -139,10 +148,15 @@ export default function ExamPortal({
     });
   }
   const hasActive = attempt?.status === "active";
+  const showAccounts =
+    !user ||
+    user.mustChangePassword ||
+    (user.role === "learner" && !user.profileComplete) ||
+    (attempt?.status !== "active" && attempt?.status !== "submitted");
   return (
     <dialog
       ref={dialog}
-      className="exam-portal"
+      className={`exam-portal ${showAccounts ? "account-portal" : ""}`}
       aria-label="登入與考試中心"
       onCancel={(e) => {
         e.preventDefault();
@@ -151,15 +165,15 @@ export default function ExamPortal({
     >
       <header className="exam-header">
         <strong>
-          <ShieldCheck size={22} /> AU5800 <span>任務與評量中心</span>
+          <ShieldCheck size={22} /> LabMECHED <span>／AU5800 教學管理</span>
         </strong>
         <div>
           {user && (
             <span>
-              {user.name} · {user.role === "administrator" ? "教師" : "學員"}
+              {user.name} · {user.role === "administrator" ? "管理員" : "學員"}
             </span>
           )}
-          {user && !hasActive && (
+          {user && (
             <button
               disabled={pending}
               onClick={() =>
@@ -208,9 +222,12 @@ export default function ExamPortal({
           </div>
           <form className="exam-card exam-login" onSubmit={login}>
             <LogIn size={30} />
-            <h2>{needsSetup ? "建立第一位教師" : "登入／考試"}</h2>
-            {needsSetup && (
-              <p>此電腦尚未建立帳號。請設定教師帳號，以管理學員與評量紀錄。</p>
+            <h2>登入 LabMECHED</h2>
+            {requiresInitialization && (
+              <p role="status">
+                此資料庫尚無管理員，請由本機執行 npm run account:bootstrap
+                初始化。本站不提供公開註冊。
+              </p>
             )}
             <label>
               帳號
@@ -221,30 +238,22 @@ export default function ExamPortal({
                 maxLength={40}
               />
             </label>
-            {needsSetup && (
-              <label>
-                姓名
-                <input
-                  name="name"
-                  autoComplete="name"
-                  required
-                  maxLength={80}
-                />
-              </label>
-            )}
             <label>
               密碼
               <input
                 name="password"
                 type="password"
-                autoComplete={needsSetup ? "new-password" : "current-password"}
+                autoComplete="current-password"
                 required
-                minLength={needsSetup ? 8 : undefined}
+
                 maxLength={128}
               />
             </label>
-            <button className="exam-primary" disabled={pending}>
-              {pending ? "處理中…" : needsSetup ? "建立教師帳號" : "登入"}
+            <button
+              className="exam-primary"
+              disabled={pending || requiresInitialization}
+            >
+              {pending ? "處理中…" : "登入"}
             </button>
             {message && (
               <p className="exam-error" role="alert">
@@ -259,6 +268,53 @@ export default function ExamPortal({
               重新連線
             </button>
           </form>
+        </div>
+      ) : user.mustChangePassword || page === "password" ? (
+        <div className="exam-scroll">
+          <PasswordChange
+            user={user}
+            onSaved={() => void refresh()}
+            onCancel={() => setPage("menu")}
+          />
+        </div>
+      ) : (user.role === "learner" && !user.profileComplete) ||
+        page === "profile" ? (
+        <div className="exam-scroll">
+          <ProfileForm
+            key={user.id}
+            user={user}
+            profile={user.profile}
+            onSave={async (profile) => {
+              const r = await api<{ user: User }>("/me/profile", {
+                method: "PUT",
+                body: profile,
+              });
+              setSessionUser(r.user);
+              setPage("menu");
+            }}
+            onCancel={user.profileComplete ? () => setPage("menu") : undefined}
+          />
+        </div>
+      ) : attempt?.status === "active" && attempt.readOnly ? (
+        <div className="exam-scroll">
+          <h1>此任務暫未開放</h1>
+          <p>
+            原紀錄保留，本次不能繼續操作或交卷。可結束此進行中紀錄後，選擇首波開放任務。
+          </p>
+          <button
+            onClick={() =>
+              void task(async () => {
+                await api(`/attempts/${attempt.id}/abandon`, {
+                  method: "POST",
+                  body: {},
+                });
+                setAttempt(null);
+                await refresh();
+              })
+            }
+          >
+            結束已關閉任務
+          </button>
         </div>
       ) : attempt?.status === "active" ? (
         <>
@@ -329,13 +385,15 @@ export default function ExamPortal({
               <History size={18} />
               我的歷程
             </button>
+            <button onClick={() => setPage("profile")}>學員資料</button>
+            <button onClick={() => setPage("password")}>變更密碼</button>
             {user.role === "administrator" && (
               <button
                 aria-pressed={page === "admin"}
                 onClick={() => setPage("admin")}
               >
                 <ShieldCheck size={18} />
-                教師管理
+                帳號管理
               </button>
             )}
           </nav>
@@ -361,7 +419,7 @@ export default function ExamPortal({
                     return (
                       <article
                         data-requested={kind === requestedKind}
-                        className={`exam-card mission-card ${kind === "biweekly" ? "locked" : ""}`}
+                        className={`exam-card mission-card ${!isTaskOpen(kind) ? "locked" : ""}`}
                         key={kind}
                       >
                         <span className="mission-number">0{i + 1}</span>
@@ -380,12 +438,12 @@ export default function ExamPortal({
                         )}
                         <button
                           className="exam-primary"
-                          disabled={pending || kind === "biweekly"}
+                          disabled={pending || !isTaskOpen(kind)}
                           onClick={() =>
                             kind !== "biweekly" && void start(kind)
                           }
                         >
-                          {kind === "biweekly" ? "尚未開放" : "開始測驗"}
+                          {!isTaskOpen(kind) ? "尚未開放" : "開始測驗"}
                         </button>
                       </article>
                     );
@@ -435,7 +493,7 @@ export default function ExamPortal({
                 />
               </>
             )}
-            {page === "admin" && <AdminDashboard inspect={inspect} />}
+            {page === "admin" && <AdminAccounts inspect={inspect} />}
           </main>
         </>
       )}
@@ -732,303 +790,5 @@ function ProgressComparisons({ attempts }: { attempts: Attempt[] }) {
         );
       })}
     </div>
-  );
-}
-function AdminDashboard({ inspect }: { inspect: (id: string) => void }) {
-  const [users, setUsers] = useState<User[]>([]),
-    [attempts, setAttempts] = useState<Attempt[]>([]),
-    [message, setMessage] = useState(""),
-    [busy, setBusy] = useState(false);
-  const [filter, setFilter] = useState({
-      user: "",
-      kind: "",
-      from: "",
-      to: "",
-    }),
-    [resetUser, setResetUser] = useState<User | null>(null);
-  const query = new URLSearchParams(
-    Object.entries(filter).filter(([, v]) => v),
-  ).toString();
-  const load = useCallback(async () => {
-    setBusy(true);
-    setMessage("");
-    try {
-      const [u, a] = await Promise.all([
-        api<{ users: User[] }>("/admin/users"),
-        api<{ attempts: Attempt[] }>(`/attempts?${query}`),
-      ]);
-      setUsers(u.users);
-      setAttempts(a.attempts);
-    } catch (e) {
-      setMessage((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }, [query]);
-  useEffect(() => {
-    void load();
-  }, [load]);
-  async function mutate(fn: () => Promise<void>) {
-    if (busy) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      await fn();
-      await load();
-    } catch (e) {
-      setMessage((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  const submitted = attempts.filter(
-    (x) => x.status === "submitted" && x.user?.role === "learner",
-  );
-  const mistakes = new Map<string, { count: number; attempts: Set<string> }>();
-  submitted.forEach((a) =>
-    a.result!.errors.forEach((e) => {
-      const x = mistakes.get(e.error) || {
-        count: 0,
-        attempts: new Set<string>(),
-      };
-      x.count++;
-      x.attempts.add(a.id);
-      mistakes.set(e.error, x);
-    }),
-  );
-  async function create(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget,
-      data = Object.fromEntries(new FormData(form));
-    await mutate(async () => {
-      await api("/admin/users", { method: "POST", body: data });
-      form.reset();
-    });
-  }
-  async function reset(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget,
-      password = new FormData(form).get("password");
-    await mutate(async () => {
-      await api(`/admin/users/${resetUser!.id}`, {
-        method: "PATCH",
-        body: { password },
-      });
-      form.reset();
-      setResetUser(null);
-    });
-  }
-  return (
-    <section>
-      <h1>教師管理與評量成效</h1>
-      {message && (
-        <p role="alert" className="exam-error">
-          {message}
-        </p>
-      )}
-      <div className="admin-account-grid">
-        <form onSubmit={create} className="exam-card">
-          <h2>
-            <UserPlus size={22} />
-            建立學員
-          </h2>
-          <label>
-            帳號
-            <input
-              name="username"
-              required
-              minLength={3}
-              maxLength={40}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            姓名
-            <input name="name" required maxLength={80} />
-          </label>
-          <label>
-            設定密碼
-            <input
-              name="password"
-              type="password"
-              required
-              minLength={8}
-              maxLength={128}
-              autoComplete="new-password"
-            />
-          </label>
-          <button className="exam-primary" disabled={busy}>
-            建立學員帳號
-          </button>
-        </form>
-        <div className="exam-card admin-user-list">
-          <h2>學員帳號</h2>
-          {users
-            .filter((u) => u.role === "learner")
-            .map((u) => (
-              <div key={u.id}>
-                <span>
-                  <b>{u.name}</b> · {u.username} · {u.enabled ? "啟用" : "停用"}
-                </span>
-                <button disabled={busy} onClick={() => setResetUser(u)}>
-                  重設密碼
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void mutate(async () => {
-                      await api(`/admin/users/${u.id}`, {
-                        method: "PATCH",
-                        body: { enabled: !u.enabled },
-                      });
-                    })
-                  }
-                >
-                  {u.enabled ? "停用" : "啟用"}
-                </button>
-              </div>
-            ))}
-          {!users.some((u) => u.role === "learner") && <p>尚未建立學員。</p>}
-          {resetUser && (
-            <form onSubmit={reset}>
-              <h3>重設 {resetUser.name} 密碼</h3>
-              <label>
-                新密碼
-                <input
-                  name="password"
-                  type="password"
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                />
-              </label>
-              <button disabled={busy}>儲存新密碼</button>
-              <button type="button" onClick={() => setResetUser(null)}>
-                取消
-              </button>
-            </form>
-          )}
-        </div>
-      </div>
-      <div className="exam-filter">
-        <label>
-          學員
-          <select
-            aria-label="篩選學員"
-            value={filter.user}
-            onChange={(e) => setFilter({ ...filter, user: e.target.value })}
-          >
-            <option value="">全部學員</option>
-            {users
-              .filter((u) => u.role === "learner")
-              .map((u) => (
-                <option value={u.id} key={u.id}>
-                  {u.name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label>
-          測驗
-          <select
-            aria-label="篩選測驗"
-            value={filter.kind}
-            onChange={(e) => setFilter({ ...filter, kind: e.target.value })}
-          >
-            <option value="">全部種類</option>
-            <option value="daily">日保養</option>
-            <option value="weekly">周保養</option>
-          </select>
-        </label>
-        {(["from", "to"] as const).map((key) => (
-          <label key={key}>
-            {key === "from" ? "起日" : "迄日"}
-            <input
-              type="date"
-              value={filter[key]}
-              onChange={(e) => setFilter({ ...filter, [key]: e.target.value })}
-            />
-          </label>
-        ))}
-        <button disabled={busy} onClick={() => void load()}>
-          更新統計
-        </button>
-        <a className="exam-link-button" href={`/api/admin/export?${query}`}>
-          <Download size={16} />
-          匯出 CSV
-        </a>
-      </div>
-      <div className="exam-stats">
-        <Stat label="交卷次數" value={String(submitted.length)} />
-        <Stat
-          label="平均完成分"
-          value={
-            submitted.length
-              ? (
-                  submitted.reduce((n, a) => n + a.result!.score, 0) /
-                  submitted.length
-                ).toFixed(1)
-              : "—"
-          }
-        />
-        <Stat
-          label="平均關鍵步驟比例"
-          value={
-            submitted.length
-              ? `${(submitted.reduce((n, a) => n + a.result!.criticalRatio, 0) / submitted.length).toFixed(1)}%`
-              : "—"
-          }
-        />
-        <Stat
-          label="平均考試時間"
-          value={
-            submitted.length
-              ? duration(
-                  submitted.reduce((n, a) => n + a.result!.totalMs, 0) /
-                    submitted.length,
-                )
-              : "—"
-          }
-        />
-      </div>
-      <h2>操作成績與熟練度趨勢</h2>
-      <p>
-        以完成度、關鍵步驟、錯誤、補正／重複及時間觀察成長。最初與最新比較只使用篩選範圍內、同種類與版本的交卷紀錄。
-      </p>
-      <ProgressComparisons attempts={submitted} />
-      <h2>最常出現的錯誤</h2>
-      {mistakes.size ? (
-        <div className="exam-table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>錯誤</th>
-                <th>發生次數</th>
-                <th>涉及考試次數</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...mistakes]
-                .sort((a, b) => b[1].count - a[1].count)
-                .map(([error, x]) => (
-                  <tr key={error}>
-                    <td>{error}</td>
-                    <td>{x.count}</td>
-                    <td>{x.attempts.size}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p>目前範圍內沒有操作錯誤紀錄。</p>
-      )}
-      <h2>考試紀錄</h2>
-      <AttemptTable
-        attempts={attempts.filter((a) => a.user?.role === "learner")}
-        inspect={inspect}
-        pending={busy}
-      />
-    </section>
   );
 }

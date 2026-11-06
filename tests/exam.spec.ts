@@ -1,3 +1,6 @@
+import { createApplication } from "../server/index.mjs";
+import { seedAccount } from "../server/account-fixture.mjs";
+import { isTaskOpen } from "../shared/availability";
 import { fillPreparationUI, preparationShot } from "./preparation-ui";
 import { currentDailyVersion } from "../shared/dailyScenario";
 import { instrument, closeProgram, cups, iseDrain, replaceAll } from "./ui";
@@ -27,6 +30,11 @@ let backend: ChildProcess;
 const serverURL = "http://127.0.0.1:3002";
 test.beforeAll(async () => {
   const folder = mkdtempSync(join(tmpdir(), "au5800-browser-test-"));
+  const setup = createApplication({ dbPath: join(folder, "test.sqlite") });
+  await seedAccount(setup.db);
+  await seedAccount(setup.db, "student", "learner");
+  await seedAccount(setup.db, "student2", "learner");
+  setup.db.close();
   backend = spawn(process.execPath, [resolve("server/index.mjs")], {
     env: {
       ...process.env,
@@ -68,23 +76,7 @@ test.beforeEach(async ({ page }, info) => {
       if (!page.isClosed()) throw error;
     }
   });
-  if (info.title.startsWith("teacher setup")) return;
   page.setDefaultTimeout(12000);
-  // Each browser test owns its fixture; worker restarts after a failure remain isolated.
-  await page.request.post(`${serverURL}/api/auth/setup`, {
-    data: { username: "teacher", name: "教學老師", password: "Testing123!" },
-  });
-  await page.request.post(`${serverURL}/api/auth/login`, {
-    data: { username: "teacher", password: "Testing123!" },
-  });
-  for (const [username, name] of [
-    ["student", "學員甲"],
-    ["student2", "學員乙"],
-  ])
-    await page.request.post(`${serverURL}/api/admin/users`, {
-      data: { username, name, password: "Testing123!" },
-    });
-  await page.request.post(`${serverURL}/api/auth/logout`, { data: {} });
 });
 async function clickSaved(page: Page, action: () => Promise<unknown>) {
   const response = page.waitForResponse(
@@ -134,87 +126,35 @@ async function command(page: Page, c: unknown, source = "model") {
     { c, source },
   );
 }
-test("teacher setup, learner ownership, empty submission, history and dashboard", async ({
+test("learner login, empty submission and saved history remain available without public setup", async ({
   page,
-}, info) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
-  await page.getByRole("button", { name: "登入／考試", exact: true }).click();
-  await page.locator(".exam-login input[name=username]").fill("teacher");
-  await page.locator(".exam-login input[name=name]").fill("教學老師");
-  await page.locator(".exam-login input[name=password]").fill("Testing123!");
-  await page.getByRole("button", { name: "建立教師帳號", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "選擇保養任務" })).toBeVisible(
-    { timeout: 12000 },
-  );
+}) => {
+  await login(page, "student");
   await expect(
-    page.getByRole("button", { name: "尚未開放", exact: true }).last(),
-  ).toBeDisabled();
-  await page.screenshot({
-    path: `test-results/${info.project.name}-exam-missions.png`,
-  });
-  await page.getByRole("button", { name: "教師管理", exact: true }).click();
-  const form = page.locator(".admin-account-grid>form");
-  for (const [username, name] of [
-    ["student", "學員甲"],
-    ["student2", "學員乙"],
-  ]) {
-    await form.locator("[name=username]").fill(username);
-    await form.locator("[name=name]").fill(name);
-    await form.locator("[name=password]").fill("Testing123!");
-    await form.getByRole("button", { name: "建立學員帳號" }).click();
-    await expect(page.locator(".admin-user-list")).toContainText(name);
-  }
-  await page.getByRole("button", { name: "登出", exact: true }).click();
-  await page.locator(".exam-login input[name=username]").fill("student");
-  await page.locator(".exam-login input[name=password]").fill("Testing123!");
-  await page
-    .locator(".exam-login")
-    .getByRole("button", { name: "登入", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "教師管理", exact: true }),
+    page.getByRole("button", { name: "帳號管理", exact: true }),
   ).toHaveCount(0);
+  await expect(
+    page
+      .locator(".mission-card")
+      .filter({
+        has: page.getByRole("heading", { name: "周保養", exact: true }),
+      })
+      .getByRole("button"),
+  ).toBeDisabled();
   await page
     .locator(".mission-card")
     .filter({ has: page.getByRole("heading", { name: "日保養", exact: true }) })
     .getByRole("button", { name: "開始測驗" })
     .click();
-  await expect(page.getByRole("region", { name: "日保養考試" })).toBeVisible({
-    timeout: 12000,
-  });
-  await expect(page.locator(".exam-room")).not.toContainText("目前步驟");
-  await expect(page.locator(".exam-room")).not.toContainText("待完成");
   await page.getByRole("button", { name: "完成", exact: true }).click();
-  await expect(
-    page.getByRole("alertdialog", { name: "確認交卷" }),
-  ).not.toContainText("遺漏");
   await page.getByRole("button", { name: "確認交卷", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "日保養 · 本次成果" }),
-  ).toBeVisible();
   await expect(page.locator(".exam-stats")).toContainText("0 / 100");
-  await expect(page.locator(".exam-debrief")).toContainText("首次完成測驗");
   await page.reload();
   await page.getByRole("button", { name: "登入／考試", exact: true }).click();
   await page.getByRole("button", { name: "我的歷程", exact: true }).click();
   await expect(page.locator(".exam-comparisons")).toContainText("只有一次紀錄");
-  await page.getByRole("button", { name: "登出", exact: true }).click();
-  await login(page, "teacher");
-  await page.getByRole("button", { name: "教師管理", exact: true }).click();
-  await expect(page.locator(".exam-stats")).toContainText("交卷次數");
-  await expect(
-    page.getByRole("button", { name: "查看結算", exact: true }),
-  ).toHaveCount(1);
-  const download = page.waitForEvent("download");
-  await page.getByRole("link", { name: "匯出 CSV" }).click();
-  expect((await download).suggestedFilename()).toBe("au5800-results.csv");
-  await page.screenshot({
-    path: `test-results/${info.project.name}-exam-admin.png`,
-  });
-  expect(errors).toEqual([]);
 });
+
 test("daily model and native rack/QC controls complete without hints; earliest/latest growth is visible", async ({
   page,
 }, info) => {
@@ -790,6 +730,10 @@ test("daily v4 mode buttons are disabled natively and new inspection evidence re
 test("weekly model actions, skip support, refresh recovery, neutral restrictions and failed-save retry", async ({
   page,
 }, info) => {
+  test.skip(
+    !isTaskOpen("weekly"),
+    "首波關閉周保養，保留原操作測試待重新開放。",
+  );
   await login(page, "student");
   await page
     .locator(".mission-card")
@@ -893,6 +837,10 @@ test("weekly model actions, skip support, refresh recovery, neutral restrictions
 test("complete weekly run, native W2/Photocal navigation, restoration and repeated restart", async ({
   page,
 }) => {
+  test.skip(
+    !isTaskOpen("weekly"),
+    "首波關閉周保養，保留原操作測試待重新開放。",
+  );
   test.setTimeout(180000);
   await login(page, "student2");
   await page

@@ -1,4 +1,6 @@
 import { canHandleBottle } from "../shared/dailyScenario";
+import { isTaskOpen } from "../shared/availability";
+import { useAccountSession, refreshAccountSession } from "./accountSession";
 import {
   TaskCenter,
   QuestLog,
@@ -69,6 +71,25 @@ import {
 } from "./detergents";
 
 export default function App() {
+  const accountSession = useAccountSession();
+  const pendingPractice = useRef<{
+    kind: MissionKind;
+    restart: boolean;
+  } | null>(null);
+  useEffect(() => {
+    const user = accountSession.user;
+    if (
+      user &&
+      !user.mustChangePassword &&
+      (user.role === "administrator" || user.profileComplete) &&
+      pendingPractice.current
+    ) {
+      const request = pendingPractice.current;
+      pendingPractice.current = null;
+      setExamOpen(false);
+      startAuthorizedTask(request.kind, false, request.restart);
+    }
+  }, [accountSession.user]);
   const [examOpen, setExamOpen] = useState(false),
     [examSceneActive, setExamSceneActive] = useState(false);
   const [sessionMode, setSessionMode] = useState<"explore" | TaskKind>(
@@ -626,7 +647,29 @@ export default function App() {
       else if (!id.startsWith("diag-")) weekly.setView("探針");
     }
   }
-  function startTask(kind: MissionKind, exam: boolean, restart: boolean) {
+  async function startTask(kind: MissionKind, exam: boolean, restart: boolean) {
+    if (!isTaskOpen(kind)) return;
+    if (!exam) {
+      const user = await refreshAccountSession();
+      if (
+        !user ||
+        user.mustChangePassword ||
+        (user.role === "learner" && !user.profileComplete)
+      ) {
+        pendingPractice.current = { kind, restart };
+        setRequestedExam(kind);
+        setTaskCenterOpen(false);
+        setExamOpen(true);
+        return;
+      }
+    }
+    startAuthorizedTask(kind, exam, restart);
+  }
+  function startAuthorizedTask(
+    kind: MissionKind,
+    exam: boolean,
+    restart: boolean,
+  ) {
     setTaskCenterOpen(false);
     if (actionTimer.current) {
       clearTimeout(actionTimer.current);
@@ -1729,7 +1772,10 @@ export default function App() {
         open={examOpen}
         requestedKind={requestedExam}
         onSceneActive={setExamSceneActive}
-        onClose={() => setExamOpen(false)}
+        onClose={() => {
+          pendingPractice.current = null;
+          setExamOpen(false);
+        }}
       />
       {troubleOpen && (
         <TroubleshootingRoom

@@ -1,13 +1,6 @@
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import {
-  randomBytes,
-  randomUUID,
-  scrypt,
-  timingSafeEqual,
-  createHash,
-} from "node:crypto";
-import { promisify } from "node:util";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { mkdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,47 +15,16 @@ import {
   examPreparationGate,
 } from "../shared/exam.ts";
 
+import { migrateDatabase } from "./database.mjs";
+import {
+  createAccountService,
+  verifyPassword,
+  accountError,
+} from "./accounts.mjs";
+import { isTaskOpen, taskClosedMessage } from "../shared/availability.ts";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const deriveKey = promisify(scrypt);
 const digest = (value) => createHash("sha256").update(value).digest("hex");
-const publicUser = (row) => ({
-  id: row.id,
-  username: row.username,
-  name: row.name,
-  role: row.role,
-  enabled: !!row.enabled,
-});
-const httpError = (status, message) =>
-  Object.assign(new Error(message), { status });
-async function hashPassword(password) {
-  const salt = randomBytes(16).toString("hex");
-  return `${salt}:${(await deriveKey(password, salt, 64)).toString("hex")}`;
-}
-async function verifyPassword(password, saved) {
-  const [salt, key] = saved.split(":");
-  const supplied = await deriveKey(password, salt, 64);
-  return timingSafeEqual(supplied, Buffer.from(key, "hex"));
-}
-function accountInput(body) {
-  const username = String(body.username || "")
-      .trim()
-      .toLowerCase(),
-    name = String(body.name || "").trim();
-  if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username))
-    throw httpError(400, "帳號需為 3–40 個英文字母、數字、點、底線或連字號。");
-  if (!name || name.length > 80)
-    throw httpError(400, "請填寫姓名（最多 80 字）。");
-  passwordInput(body.password);
-  return { username, name, password: body.password };
-}
-function passwordInput(password) {
-  if (
-    typeof password !== "string" ||
-    password.length < 8 ||
-    password.length > 128
-  )
-    throw httpError(400, "密碼需為 8–128 字。");
-}
+const httpError = accountError;
 async function bodyOf(req) {
   if (!req.headers["content-type"]?.startsWith("application/json"))
     throw httpError(415, "請使用 JSON 格式。");
@@ -89,14 +51,10 @@ export function createApplication({
   if (dbPath !== ":memory:")
     mkdirSync(dirname(resolve(dbPath)), { recursive: true });
   const db = new DatabaseSync(dbPath);
-  db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, password TEXT NOT NULL, created_at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS attempts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, started_at INTEGER NOT NULL, submitted_at INTEGER, revision INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL, result TEXT, rubric TEXT NOT NULL);
-    CREATE UNIQUE INDEX IF NOT EXISTS one_active_attempt ON attempts(user_id) WHERE status='active';
-    CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, attempt_id TEXT NOT NULL REFERENCES attempts(id), seq INTEGER NOT NULL, at INTEGER NOT NULL, source TEXT NOT NULL, command TEXT NOT NULL, accepted INTEGER NOT NULL, label TEXT NOT NULL, error TEXT NOT NULL, UNIQUE(attempt_id,seq));
-    CREATE INDEX IF NOT EXISTS learner_history ON attempts(user_id,started_at);
-    PRAGMA user_version=1;`);
+  const migration = migrateDatabase(db, dbPath);
+  db.exec("PRAGMA journal_mode=WAL;");
+  const accounts = createAccountService(db);
+  const publicUser = accounts.view;
   const loginFailures = new Map();
   const eventsFor = (id) =>
     db
@@ -114,7 +72,7 @@ export function createApplication({
   function loaded(row, now = Date.now()) {
     if (!row) throw httpError(404, "找不到考試紀錄。");
     let state = JSON.parse(row.state);
-    if (row.status === "active") {
+    if (row.status === "active" && isTaskOpen(row.kind)) {
       if (!supportsVersion(row.kind, row.version))
         throw httpError(409, "這次考試的版本無法繼續，請放棄後重新開始。");
       state = advanceEngine(state, now);
@@ -132,6 +90,11 @@ export function createApplication({
       kind: row.kind,
       version: row.version,
       status: row.status,
+      readOnly: !isTaskOpen(row.kind),
+      backgroundSnapshot: row.background_snapshot
+        ? JSON.parse(row.background_snapshot)
+        : null,
+      backgroundVersion: row.background_version,
       startedAt: row.started_at,
       submittedAt: row.submitted_at,
       revision: row.revision,
@@ -184,7 +147,7 @@ export function createApplication({
     );
     res.setHeader(
       "Set-Cookie",
-      `au5800_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`,
+      `au5800_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${process.env.AU5800_COOKIE_SECURE === "true" ? "; Secure" : ""}`,
     );
   }
   function selectedHistory(url, user) {
@@ -255,14 +218,18 @@ export function createApplication({
         res.end(req.method === "HEAD" ? undefined : readFileSync(file));
         return;
       }
-      if (!["GET", "HEAD"].includes(req.method) && req.headers.origin) {
-        const origin = new URL(req.headers.origin);
-        if (
-          origin.protocol !== "http:" ||
-          !["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname) ||
-          ![String(server.address()?.port), "5173"].includes(origin.port)
-        )
-          throw httpError(403, "不接受此網站的操作請求。");
+      if (!["GET", "HEAD"].includes(req.method)) {
+        if (req.headers["sec-fetch-site"] === "cross-site")
+          throw httpError(403, "不接受跨站操作。");
+        if (req.headers.origin) {
+          const origin = new URL(req.headers.origin);
+          const local =
+            origin.protocol === "http:" &&
+            ["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname) &&
+            [String(server.address()?.port), "5173"].includes(origin.port);
+          if (!local && origin.origin !== process.env.AU5800_PUBLIC_ORIGIN)
+            throw httpError(403, "不接受此網站的操作請求。");
+        }
       }
       if (path === "/api/health") {
         send(200, { ok: true });
@@ -274,38 +241,18 @@ export function createApplication({
           user = sessionUser(req);
         } catch {}
         send(200, {
-          needsSetup:
+          needsSetup: false,
+          requiresInitialization:
             db.prepare("SELECT COUNT(*) AS n FROM users").get().n === 0,
           user,
         });
         return;
       }
-      if (path === "/api/auth/setup" && req.method === "POST") {
-        if (db.prepare("SELECT COUNT(*) AS n FROM users").get().n)
-          throw httpError(409, "教師帳號已建立，請登入。");
-        const body = accountInput(await bodyOf(req)),
-          hash = await hashPassword(body.password),
-          id = randomUUID();
-        // Recheck after password hashing to avoid concurrent first-run setup.
-        if (db.prepare("SELECT COUNT(*) AS n FROM users").get().n)
-          throw httpError(409, "教師帳號已建立，請登入。");
-        db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?,?)").run(
-          id,
-          body.username,
-          body.name,
-          "administrator",
-          1,
-          hash,
-          Date.now(),
+      if (path === "/api/auth/setup")
+        throw httpError(
+          404,
+          "不提供公開註冊；首位管理員請由本機初始化程序建立。",
         );
-        await issueSession(res, id);
-        send(201, {
-          user: publicUser(
-            db.prepare("SELECT * FROM users WHERE id=?").get(id),
-          ),
-        });
-        return;
-      }
       if (path === "/api/auth/login" && req.method === "POST") {
         const body = await bodyOf(req),
           name = String(body.username || "")
@@ -349,88 +296,29 @@ export function createApplication({
         db.prepare("DELETE FROM sessions WHERE token=?").run(digest(token));
         res.setHeader(
           "Set-Cookie",
-          "au5800_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
+          `au5800_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${process.env.AU5800_COOKIE_SECURE === "true" ? "; Secure" : ""}`,
         );
         send(200, { ok: true });
         return;
       }
+      if (
+        await accounts.handle({
+          path,
+          req,
+          user,
+          bodyOf,
+          send,
+          issueSession: (_, id) => issueSession(res, id),
+        })
+      )
+        return;
       if (path.startsWith("/api/admin/")) {
         if (user.role !== "administrator")
-          throw httpError(403, "此功能僅限教師使用。");
-        if (path === "/api/admin/users" && req.method === "GET") {
-          send(200, {
-            users: db
-              .prepare("SELECT * FROM users ORDER BY created_at")
-              .all()
-              .map(publicUser),
-          });
-          return;
-        }
-        if (path === "/api/admin/users" && req.method === "POST") {
-          const body = accountInput(await bodyOf(req));
-          if (
-            db
-              .prepare("SELECT id FROM users WHERE username=?")
-              .get(body.username)
-          )
-            throw httpError(409, "帳號已存在。");
-          const hash = await hashPassword(body.password),
-            id = randomUUID();
-          try {
-            db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?,?)").run(
-              id,
-              body.username,
-              body.name,
-              "learner",
-              1,
-              hash,
-              Date.now(),
-            );
-          } catch {
-            throw httpError(409, "帳號已存在。");
-          }
-          send(201, {
-            user: publicUser(
-              db.prepare("SELECT * FROM users WHERE id=?").get(id),
-            ),
-          });
-          return;
-        }
-        const match = path.match(/^\/api\/admin\/users\/([^/]+)$/);
-        if (match && req.method === "PATCH") {
-          const row = db
-            .prepare("SELECT * FROM users WHERE id=?")
-            .get(match[1]);
-          if (!row || row.role !== "learner")
-            throw httpError(404, "找不到學員帳號。");
-          const body = await bodyOf(req);
-          if (body.password !== undefined) {
-            passwordInput(body.password);
-            db.prepare("UPDATE users SET password=? WHERE id=?").run(
-              await hashPassword(body.password),
-              row.id,
-            );
-          }
-          if (body.enabled !== undefined) {
-            if (typeof body.enabled !== "boolean")
-              throw httpError(400, "帳號狀態格式不正確。");
-            db.prepare("UPDATE users SET enabled=? WHERE id=?").run(
-              Number(body.enabled),
-              row.id,
-            );
-          }
-          db.prepare("DELETE FROM sessions WHERE user_id=?").run(row.id);
-          send(200, {
-            user: publicUser(
-              db.prepare("SELECT * FROM users WHERE id=?").get(row.id),
-            ),
-          });
-          return;
-        }
+          throw httpError(403, "此功能僅限管理員使用。");
         if (path === "/api/admin/export" && req.method === "GET") {
           const cell = (v) =>
             `"${String(v ?? "")
-              .replace(/^[=+@-]/, "'$&")
+              .replace(/^(\s*)([=+@-])|^([\t\r\n])/, "'$&")
               .replaceAll('"', '""')}"`;
           const csv = [
             [
@@ -508,8 +396,12 @@ export function createApplication({
       }
       if (path === "/api/attempts" && req.method === "POST") {
         const body = await bodyOf(req);
-        if (!["daily", "weekly", "troubleshooting"].includes(body.kind))
-          throw httpError(400, "此測驗尚未開放。");
+        const currentUser = sessionUser(req);
+        if (typeof body.kind !== "string")
+          throw httpError(400, "任務格式不正確。");
+        if (!isTaskOpen(body.kind)) throw httpError(403, taskClosedMessage);
+        if (currentUser.role === "learner" && !currentUser.profileComplete)
+          throw httpError(403, "請先完成學員背景資料再開始訓練。");
         if (
           db
             .prepare(
@@ -528,7 +420,9 @@ export function createApplication({
             items: g.items.map(({ completed, ...item }) => item),
           }),
         );
-        db.prepare("INSERT INTO attempts VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(
+        db.prepare(
+          "INSERT INTO attempts(id,user_id,kind,version,status,started_at,submitted_at,revision,state,result,rubric,background_snapshot,background_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ).run(
           id,
           user.id,
           body.kind,
@@ -540,6 +434,20 @@ export function createApplication({
           JSON.stringify(state),
           null,
           JSON.stringify(rubric),
+          accounts.profileFor(user.id).profile
+            ? JSON.stringify({
+                ...accounts.profileFor(user.id).profile,
+                cohortId: currentUser.cohortId,
+                cohortName: currentUser.cohortId
+                  ? db
+                      .prepare("SELECT name FROM cohorts WHERE id=?")
+                      .get(currentUser.cohortId)?.name || null
+                  : null,
+              })
+            : null,
+          accounts.profileFor(user.id).profile
+            ? accounts.profileFor(user.id).version
+            : null,
         );
         send(201, {
           attempt: attemptView(
@@ -560,6 +468,8 @@ export function createApplication({
         }
         if (req.method !== "POST") throw httpError(405, "不支援此方法。");
         assertOwn(row, user);
+        if (!isTaskOpen(row.kind) && operation !== "abandon")
+          throw httpError(403, taskClosedMessage);
         const body = await bodyOf(req),
           now = Date.now();
         sessionUser(req);
@@ -708,6 +618,7 @@ export function createApplication({
   return {
     server,
     db,
+    migration,
     async close() {
       await new Promise((resolveClose) => server.close(resolveClose));
       db.close();

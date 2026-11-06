@@ -1,5 +1,10 @@
+import { practiceAccount } from "./practice-account";
 import { test, expect } from "@playwright/test";
 import { preparationShot } from "./preparation-ui";
+test.beforeEach(async ({ page }) => {
+  await practiceAccount(page);
+});
+
 test("free exploration opens preparation immediately and retains the material catalog and hospital photographs", async ({
   page,
 }, info) => {

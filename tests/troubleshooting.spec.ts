@@ -1,3 +1,5 @@
+import { createApplication } from "../server/index.mjs";
+import { seedAccount } from "../server/account-fixture.mjs";
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync } from "node:fs";
@@ -13,6 +15,9 @@ const serverURL = "http://127.0.0.1:3003";
 test.beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), "uibc-browser-"));
   testDbPath = join(dir, "test.sqlite");
+  const setup = createApplication({ dbPath: testDbPath });
+  await seedAccount(setup.db);
+  setup.db.close();
   backend = spawn(process.execPath, [resolve("server/index.mjs")], {
     env: {
       ...process.env,
@@ -53,6 +58,12 @@ test.beforeEach(async ({ page }) => {
     }
   });
 });
+test.beforeEach(async ({ page }) => {
+  await page.request.post(serverURL + "/api/auth/login", {
+    data: { username: "teacher", password: "Testing123!" },
+  });
+});
+
 test("UIBC practice completes all twelve steps with original cups, both old reagents removed and real LIS controls", async ({
   page,
 }, info) => {
@@ -96,13 +107,6 @@ test("UIBC exam preserves state and time through reload and lost-save retry with
   test.setTimeout(300000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.request.post(serverURL + "/api/auth/setup", {
-    data: {
-      username: "teacher",
-      name: "UIBC teacher",
-      password: "Testing123!",
-    },
-  });
   await page.context().clearCookies();
   await page.goto("/");
   await page.getByRole("button", { name: "登入／考試", exact: true }).click();
@@ -112,6 +116,7 @@ test("UIBC exam preserves state and time through reload and lost-save retry with
     .locator(".exam-login")
     .getByRole("button", { name: "登入", exact: true })
     .click();
+  await page.getByRole("button", { name: "任務選單", exact: true }).click();
   await page
     .locator(".mission-card")
     .filter({
@@ -269,13 +274,6 @@ for (const version of [
     page,
   }, info) => {
     test.setTimeout(240000);
-    await page.request.post(serverURL + "/api/auth/setup", {
-      data: {
-        username: "teacher",
-        name: "UIBC teacher",
-        password: "Testing123!",
-      },
-    });
     await page.request.post(serverURL + "/api/auth/login", {
       data: { username: "teacher", password: "Testing123!" },
     });

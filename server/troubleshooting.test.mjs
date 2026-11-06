@@ -1,3 +1,4 @@
+import { seedAccount } from "./account-fixture.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { troubleFixture } from "./troubleshooting-fixture.mjs";
@@ -256,11 +257,8 @@ test("UIBC API uses existing transactions, resumes a new kind, deduplicates even
     return { status: response.status, body: await response.json() };
   };
   try {
-    await request("/auth/setup", {
-      username: "teacher",
-      name: "UIBC teacher",
-      password: "Testing123!",
-    });
+    await seedAccount(app.db);
+    await request("/auth/login", { username: "teacher", password: "Testing123!" });
     await request("/auth/login", {
       username: "teacher",
       password: "Testing123!",
