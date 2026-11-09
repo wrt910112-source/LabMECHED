@@ -1,6 +1,7 @@
 import { DatabaseSync, backup } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { databaseVersion } from "../server/database.mjs";
 const [sourceArg, targetArg] = process.argv.slice(2);
 if (!sourceArg || !targetArg)
   throw Error(
@@ -15,7 +16,7 @@ const db = new DatabaseSync(source, { readOnly: true });
 try {
   if (db.prepare("PRAGMA integrity_check").get().integrity_check !== "ok")
     throw Error("來源完整性檢查失敗。");
-  if (db.prepare("PRAGMA user_version").get().user_version > 2)
+  if (db.prepare("PRAGMA user_version").get().user_version > databaseVersion)
     throw Error("備份版本高於本程式，請先使用相符程式。");
   await backup(db, target);
 } finally {

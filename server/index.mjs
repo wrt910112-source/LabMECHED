@@ -254,6 +254,12 @@ export function createApplication({
           404,
           "不提供公開註冊；首位管理員請由本機初始化程序建立。",
         );
+      if (path === "/api/auth/register") {
+        if (req.method !== "POST") throw httpError(405, "不支援此方法。");
+        await accounts.register({ req, bodyOf, send, issueSession: (id) => issueSession(res, id) });
+        if (process.env.RENDER === "true") console.info(JSON.stringify({ event: "registration_created", status: 201 }));
+        return;
+      }
       if (path === "/api/auth/login" && req.method === "POST") {
         const body = await bodyOf(req),
           name = String(body.username || "")
@@ -607,6 +613,9 @@ export function createApplication({
       }
       throw httpError(404, "找不到此功能。");
     } catch (error) {
+      if (process.env.RENDER === "true" && req.url?.split("?")[0] === "/api/auth/register")
+        console.warn(JSON.stringify({ event: "registration_rejected", status: error.status || 500 }));
+      if (error.retryAfter) res.setHeader("Retry-After", String(error.retryAfter));
       if (!error.status) console.error("API error:", error);
       send(
         error.status || 500,

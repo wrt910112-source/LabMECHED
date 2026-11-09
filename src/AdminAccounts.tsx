@@ -16,6 +16,7 @@ import {
 import { api, ApiError } from "./examApi";
 import { ProfileForm } from "./AccountProfile";
 import { refreshAccountSession } from "./accountSession";
+import InvitationManagement from "./InvitationManagement";
 type Credential = { user: User; temporaryPassword: string };
 function AccountDialog({
   title,
@@ -206,6 +207,7 @@ export default function AdminAccounts({
           <button onClick={() => void run(load)} disabled={busy}>
             重新載入
           </button>
+          <button onClick={() => document.getElementById("course-invitations")?.scrollIntoView({ behavior: "smooth" })}>課程邀請碼</button>
         </div>
       </header>
       {error && (
@@ -239,7 +241,7 @@ export default function AdminAccounts({
           { value: "true", label: "完整" },
           { value: "false", label: "待填" },
         ])}
-        {select("cohort", "班別", [
+        {select("cohort", "班別／課程", [
           { value: "none", label: "未分班" },
           ...cohorts.map((c) => ({ value: c.id, label: c.name })),
         ])}
@@ -354,9 +356,9 @@ export default function AdminAccounts({
                 </select>
               </label>
               <label>
-                班別
+                班別／課程
                 <select
-                  aria-label="選取帳號班別"
+                  aria-label="選取帳號班別／課程"
                   value={cohortId}
                   onChange={(e) => setCohortId(e.target.value)}
                 >
@@ -388,7 +390,7 @@ export default function AdminAccounts({
                     })
                   }
                 >
-                  儲存權限／班別
+                  儲存權限／班別／課程
                 </button>
                 <button disabled={busy} onClick={() => setMode("profile")}>
                   檢視／修正背景
@@ -472,16 +474,16 @@ export default function AdminAccounts({
             });
           }}
         >
-          <h2>班別管理</h2>
+          <h2>班別／課程管理</h2>
           <label>
-            新增班別名稱
+            新增班別／課程名稱
             <input name="name" required maxLength={80} />
           </label>
-          <button disabled={busy}>建立班別</button>
+          <button disabled={busy}>建立班別／課程</button>
           <p>
             {cohorts.length
               ? cohorts.map((c) => c.name).join("、")
-              : "尚未建立班別。"}
+              : "尚未建立班別／課程。"}
           </p>
         </form>
         <section className="account-panel">
@@ -493,6 +495,7 @@ export default function AdminAccounts({
           <p>研究使用：尚未啟用，依院內核定程序辦理。</p>
         </section>
       </div>
+      <InvitationManagement cohorts={cohorts} />
       <details className="account-panel">
         <summary
           onClick={() =>
@@ -542,7 +545,7 @@ export default function AdminAccounts({
               </select>
             </label>
             <label>
-              班別
+              班別／課程
               <select name="cohortId">
                 <option value="">未分班</option>
                 {cohorts.map((c) => (
@@ -618,7 +621,7 @@ export default function AdminAccounts({
                     <tr>
                       <th>登入帳號</th>
                       <th>名稱</th>
-                      <th>班別</th>
+                      <th>班別／課程</th>
                     </tr>
                   </thead>
                   <tbody>

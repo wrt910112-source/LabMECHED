@@ -60,6 +60,7 @@ export default function ExamPortal({
   const { user, requiresInitialization } = useAccountSession();
   const setUser = setSessionUser;
   const [loading, setLoading] = useState(true);
+  const [registering, setRegistering] = useState(false);
   const [message, setMessage] = useState(""),
     [pending, setPending] = useState(false),
     [page, setPage] = useState<PortalPage>("menu");
@@ -125,6 +126,28 @@ export default function ExamPortal({
         body: Object.fromEntries(fields),
       });
       form.reset();
+      await refresh();
+    });
+  }
+  async function register(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fields = new FormData(form);
+    if (fields.get("password") !== fields.get("confirmation")) {
+      setMessage("兩次輸入的密碼不一致。");
+      return;
+    }
+    await task(async () => {
+      await api("/auth/register", {
+        method: "POST",
+        body: {
+          inviteCode: fields.get("inviteCode"),
+          username: fields.get("username"),
+          password: fields.get("password"),
+        },
+      });
+      form.reset();
+      setRegistering(false);
       await refresh();
     });
   }
@@ -220,13 +243,34 @@ export default function ExamPortal({
               個人成長
             </div>
           </div>
-          <form className="exam-card exam-login" onSubmit={login}>
+          <form
+            className="exam-card exam-login"
+            onSubmit={registering ? register : login}
+          >
             <LogIn size={30} />
-            <h2>登入 LabMECHED</h2>
+            <h2>{registering ? "課程邀請碼註冊" : "登入 LabMECHED"}</h2>
             {requiresInitialization && (
               <p role="status">
-                此資料庫尚無管理員，請聯絡網站管理者完成帳號初始化後再登入。本站不提供公開註冊。
+                此資料庫尚無管理員，請聯絡網站管理者完成初始化後再登入或使用課程邀請碼註冊。
               </p>
+            )}
+            {registering && (
+              <>
+                <p>
+                  持有效邀請碼即可建立學員帳號，並自動加入對應班別／課程。註冊後請完成背景資料。
+                </p>
+                <label>
+                  課程邀請碼
+                  <input
+                    name="inviteCode"
+                    required
+                    maxLength={64}
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCapitalize="none"
+                  />
+                </label>
+              </>
             )}
             <label>
               帳號
@@ -242,23 +286,51 @@ export default function ExamPortal({
               <input
                 name="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete={registering ? "new-password" : "current-password"}
+                minLength={registering ? 8 : undefined}
                 required
 
                 maxLength={128}
               />
             </label>
+            {registering && (
+              <label>
+                確認密碼
+                <input
+                  name="confirmation"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  maxLength={128}
+                />
+              </label>
+            )}
             <button
               className="exam-primary"
               disabled={pending || requiresInitialization}
             >
-              {pending ? "處理中…" : "登入"}
+              {pending ? "處理中…" : registering ? "註冊並加入課程" : "登入"}
             </button>
             {message && (
               <p className="exam-error" role="alert">
                 {message}
               </p>
             )}
+            <button
+              type="button"
+              disabled={pending || (requiresInitialization && !registering)}
+              onClick={() => {
+                setRegistering((v) => !v);
+                setMessage("");
+              }}
+            >
+              {registering ? "返回登入" : "持邀請碼註冊"}
+            </button>
+            <small>
+              忘記密碼請聯絡管理員重設。帳號需為 3–40
+              個英文字母、數字、點、底線或連字號；密碼為 8–128 字。
+            </small>
             <button
               type="button"
               disabled={pending}

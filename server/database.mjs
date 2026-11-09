@@ -2,6 +2,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+export const databaseVersion = 3;
 
 export function consistentBackup(db, dbPath) {
   const dir = resolve(dirname(dbPath), "backups");
@@ -25,8 +26,10 @@ export const newLearnerCode = () =>
 export function migrateDatabase(db, dbPath = ":memory:") {
   db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
   const version = db.prepare("PRAGMA user_version").get().user_version;
-  if (version > 2) throw Error("資料庫版本高於本程式，拒絕降版寫入。");
-  if (version === 2) return { from: 2, to: 2, backup: null };
+  if (version > databaseVersion)
+    throw Error("資料庫版本高於本程式，拒絕降版寫入。");
+  if (version === databaseVersion)
+    return { from: version, to: version, backup: null };
   const existing = !!db
     .prepare("SELECT name FROM sqlite_master WHERE name='users'")
     .get();
@@ -36,7 +39,8 @@ export function migrateDatabase(db, dbPath = ":memory:") {
       : null;
   db.exec("BEGIN IMMEDIATE");
   try {
-    db.exec(`
+    if (version < 2) {
+      db.exec(`
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, password TEXT NOT NULL, created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS attempts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, started_at INTEGER NOT NULL, submitted_at INTEGER, revision INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL, result TEXT, rubric TEXT NOT NULL);
@@ -54,16 +58,30 @@ export function migrateDatabase(db, dbPath = ":memory:") {
       ALTER TABLE attempts ADD COLUMN background_snapshot TEXT;
       ALTER TABLE attempts ADD COLUMN background_version TEXT;
     `);
-    const update = db.prepare("UPDATE users SET learner_code=? WHERE id=?");
-    for (const row of db.prepare("SELECT id FROM users").all())
-      update.run(newLearnerCode(), row.id);
-    db.prepare(
-      "UPDATE users SET must_change_password=1 WHERE username=? AND role='administrator'",
-    ).run("000029220");
-    db.exec("PRAGMA user_version=2; COMMIT;");
+      const update = db.prepare("UPDATE users SET learner_code=? WHERE id=?");
+      for (const row of db.prepare("SELECT id FROM users").all())
+        update.run(newLearnerCode(), row.id);
+      db.prepare(
+        "UPDATE users SET must_change_password=1 WHERE username=? AND role='administrator'",
+      ).run("000029220");
+    }
+    db.exec(`
+      CREATE TABLE invitations (
+        id TEXT PRIMARY KEY, cohort_id TEXT NOT NULL REFERENCES cohorts(id),
+        code_hash TEXT UNIQUE NOT NULL, code_suffix TEXT NOT NULL,
+        expires_at INTEGER NOT NULL, max_uses INTEGER NOT NULL CHECK(max_uses > 0),
+        used_count INTEGER NOT NULL DEFAULT 0 CHECK(used_count >= 0 AND used_count <= max_uses),
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)),
+        created_by TEXT NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL
+      );
+      ALTER TABLE users ADD COLUMN invitation_id TEXT REFERENCES invitations(id);
+      CREATE INDEX users_invitation ON users(invitation_id);
+      PRAGMA user_version=3;
+      COMMIT;
+    `);
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
-  return { from: version, to: 2, backup };
+  return { from: version, to: databaseVersion, backup };
 }

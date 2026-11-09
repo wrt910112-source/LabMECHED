@@ -117,6 +117,7 @@ export const kindNames = {
   troubleshooting: "UIBC 品管異常：從判讀到回溯",
 };
 export type User = {
+  invitationId?: string | null;
   id: string;
   username: string;
   name: string;

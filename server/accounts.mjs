@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { backgroundVersion, validateProfile } from "../shared/accounts.ts";
 import { newLearnerCode } from "./database.mjs";
+import { createInvitationService } from "./invitations.mjs";
 const deriveKey = promisify(scrypt);
 export const accountError = (status, message) =>
   Object.assign(new Error(message), { status });
@@ -61,7 +62,7 @@ export async function bootstrapAdministrator(
     throw e;
   }
 }
-export function createAccountService(db) {
+export function createAccountService(db, { registrationHash = hashPassword } = {}) {
   const rowFor = (id) => db.prepare("SELECT * FROM users WHERE id=?").get(id);
   const profileFor = (id) => {
     const p = db
@@ -87,6 +88,7 @@ export function createAccountService(db) {
       mustChangePassword: !!row.must_change_password,
       profileComplete: !!p.profile,
       cohortId: row.cohort_id,
+      invitationId: row.invitation_id || null,
       profile: p.profile,
       profileVersion: p.version,
       profileUpdatedAt: p.updatedAt,
@@ -162,10 +164,10 @@ export function createAccountService(db) {
     } else if (!importing) cohortId = cohortInput(body.cohortId);
     return { username, name: name || username, role, cohortId };
   }
-  function insert(account, hash) {
+  function insert(account, hash, mustChangePassword = true, invitationId = null) {
     const id = randomUUID();
     db.prepare(
-      "INSERT INTO users(id,username,name,role,enabled,password,created_at,learner_code,must_change_password,cohort_id) VALUES(?,?,?,?,1,?,?,?,1,?)",
+      "INSERT INTO users(id,username,name,role,enabled,password,created_at,learner_code,must_change_password,cohort_id,invitation_id) VALUES(?,?,?,?,1,?,?,?,?,?,?)",
     ).run(
       id,
       account.username,
@@ -174,7 +176,9 @@ export function createAccountService(db) {
       hash,
       Date.now(),
       newLearnerCode(),
+      mustChangePassword ? 1 : 0,
       account.cohortId,
+      invitationId,
     );
     return id;
   }
@@ -204,6 +208,10 @@ export function createAccountService(db) {
     });
     return profileFor(id);
   }
+  const invitations = createInvitationService(db, {
+    error: accountError, hashPassword: registrationHash, usernameInput, passwordInput,
+    insert, transaction, audit, view, rowFor,
+  });
   async function handle({ path, req, user, bodyOf, send, issueSession }) {
     if (path === "/api/auth/change-password" && req.method === "POST") {
       const b = await bodyOf(req);
@@ -259,6 +267,7 @@ export function createAccountService(db) {
           throw accountError(403, "管理權限已變更，請重新登入。");
         return fn();
       });
+    if (await invitations.admin({ path, req, user, bodyOf, send, adminWrite })) return true;
     if (path === "/api/admin/users" && req.method === "GET") {
       send(200, {
         users: db
@@ -440,5 +449,5 @@ export function createAccountService(db) {
     }
     return false;
   }
-  return { view, profileFor, handle };
+  return { view, profileFor, handle, register: invitations.register };
 }

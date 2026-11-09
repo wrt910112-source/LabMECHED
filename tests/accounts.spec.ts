@@ -81,16 +81,20 @@ test("administrator manages real account rows, cohorts, first-password changes, 
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await login(page);
-  await page.getByLabel("新增班別名稱").fill("帳號驗證班");
-  await page.getByRole("button", { name: "建立班別", exact: true }).click();
+  await page.getByLabel("新增班別／課程名稱").fill("帳號驗證班");
+  await page
+    .getByRole("button", { name: "建立班別／課程", exact: true })
+    .click();
   await expect(
-    page.getByLabel("選取帳號班別").getByRole("option", { name: "帳號驗證班" }),
+    page
+      .getByLabel("選取帳號班別／課程")
+      .getByRole("option", { name: "帳號驗證班" }),
   ).toHaveCount(1);
   await page.getByRole("button", { name: "建立學員／帳號" }).click();
   const dialog = page.getByRole("dialog", { name: "建立帳號", exact: true });
   await dialog.getByLabel("登入帳號", { exact: true }).fill("00000101");
   await dialog.getByLabel(/顯示名稱/).fill("帳號功能測試學員");
-  await dialog.getByLabel("班別").selectOption({ label: "帳號驗證班" });
+  await dialog.getByLabel("班別／課程").selectOption({ label: "帳號驗證班" });
   await dialog.getByRole("button", { name: "建立並顯示臨時密碼" }).click();
   const credentials = page.getByRole("dialog", {
     name: "臨時密碼，只顯示一次",
@@ -253,4 +257,103 @@ test("practice requires login and background completion while closed task tiles 
     async () => (await (await fetch("/api/attempts")).json()).attempts,
   );
   expect(history).toEqual([]);
+});
+
+test("course invitations create learner accounts, keep secrets one-time and retain administrative controls", async ({
+  page,
+}, info) => {
+  test.setTimeout(120000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await login(page);
+  await page.getByLabel("新增班別／課程名稱").fill("自行註冊課程");
+  await page
+    .getByRole("button", { name: "建立班別／課程", exact: true })
+    .click();
+  const management = page.getByRole("region", { name: "課程邀請碼管理" });
+  const create = management.getByRole("form", { name: "建立課程邀請碼" });
+  await create
+    .getByLabel("班別／課程", { exact: true })
+    .selectOption({ label: "自行註冊課程" });
+  await expect(create.getByLabel("註冊名額")).toHaveValue("30");
+  await create.getByRole("button", { name: "建立邀請碼", exact: true }).click();
+  const secret = management.locator(".invitation-secret");
+  await expect(secret.locator("code")).toHaveText(/^[A-Za-z0-9_-]{22}$/);
+  const code = (await secret.locator("code").textContent())!;
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:5173" });
+  await secret.getByRole("button", { name: "複製邀請碼", exact: true }).click();
+  await expect(secret.getByRole("button", { name: "已複製邀請碼", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+  expect(
+    await page.evaluate(() => JSON.stringify([localStorage, sessionStorage])),
+  ).not.toContain(code);
+  const row = management.getByRole("row").filter({ hasText: code.slice(-4) });
+  await expect(row).toContainText("0／30");
+  await row.getByRole("button", { name: "修改期限／名額" }).click();
+  const edit = management.getByRole("form", { name: "修改課程邀請碼" });
+  await edit.getByLabel("註冊名額").fill("1");
+  await edit.getByRole("button", { name: "儲存邀請碼設定" }).click();
+  await expect(row).toContainText("0／1");
+  await shot(page, "invitation-management", info.project.name);
+  page.once("dialog", (d) => d.accept());
+  await secret.getByRole("button", { name: "已保存，關閉完整碼" }).click();
+  await expect(management.locator("code")).toHaveCount(0);
+  await page.getByRole("button", { name: "登出", exact: true }).click();
+  const form = page.locator(".exam-login");
+  await form.getByRole("button", { name: "持邀請碼註冊" }).click();
+  await form.getByLabel("課程邀請碼", { exact: true }).fill(code);
+  await form.getByLabel("帳號", { exact: true }).fill("self-registered");
+  await form.getByLabel("密碼", { exact: true }).fill("SelfRegister9");
+  await form.getByLabel("確認密碼", { exact: true }).fill("Mismatch9");
+  await form.getByRole("button", { name: "註冊並加入課程" }).click();
+  await expect(form.getByRole("alert")).toContainText("密碼不一致");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await form.getByLabel("確認密碼", { exact: true }).fill("SelfRegister9");
+  await shot(page, "mobile-invitation-registration", info.project.name);
+  await form.getByRole("button", { name: "註冊並加入課程" }).click();
+  const profile = page.getByRole("form", { name: "學員背景資料" });
+  await expect(profile).toBeVisible();
+  await expect(page.locator(".account-password")).toHaveCount(0);
+  await profile.getByLabel("暱稱", { exact: true }).fill("自行註冊學員");
+  await profile.getByLabel("所屬組別").selectOption("未分發／輪訓");
+  await profile.getByLabel("主要身分（單選）").selectOption("檢驗實習生");
+  await profile.getByLabel("AU5800 使用經驗").selectOption("從未");
+  await profile.getByLabel("最近一年使用頻率").selectOption("從未");
+  await profile.getByLabel("無親自保養經驗").check();
+  await profile.getByLabel("最近一年保養操作頻率").selectOption("從未");
+  await profile.getByRole("button", { name: "儲存學員資料" }).click();
+  const user = await page.evaluate(
+    async () => (await (await fetch("/api/auth/status")).json()).user,
+  );
+  expect(user.role).toBe("learner");
+  expect(user.cohortId).toBeTruthy();
+  await page.setViewportSize(info.project.use.viewport!);
+  await page.getByRole("button", { name: "登出", exact: true }).click();
+  await form.getByLabel("帳號", { exact: true }).fill("000029220");
+  await form.getByLabel("密碼", { exact: true }).fill("ChangedAccount9");
+  await form.getByRole("button", { name: "登入", exact: true }).click();
+  await page
+    .getByLabel("班別／課程", { exact: true })
+    .first()
+    .selectOption({ label: "自行註冊課程" });
+  await expect(page.locator(".account-list")).toContainText("self-registered");
+  await expect(row).toContainText("1／1");
+  await expect(row).toContainText("額滿");
+  await row.getByRole("button", { name: "修改期限／名額" }).click();
+  await edit.getByLabel("註冊名額").fill("2");
+  await edit.getByRole("button", { name: "儲存邀請碼設定" }).click();
+  await expect(row).toContainText("1／2");
+  page.once("dialog", (d) => d.accept());
+  await row.getByRole("button", { name: "停用邀請碼", exact: true }).click();
+  await expect(
+    row.getByRole("button", { name: "停用邀請碼", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "登出", exact: true }).click();
+  await form.getByLabel("帳號", { exact: true }).fill("self-registered");
+  await form.getByLabel("密碼", { exact: true }).fill("SelfRegister9");
+  await form.getByRole("button", { name: "登入", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "學員資料", exact: true }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
 });

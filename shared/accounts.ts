@@ -39,6 +39,22 @@ export interface Cohort {
   id: string;
   name: string;
 }
+export interface Invitation {
+  id: string;
+  cohortId: string;
+  cohortName: string;
+  codeSuffix: string;
+  expiresAt: number;
+  maxUses: number;
+  usedCount: number;
+  createdAt: number;
+  status: "active" | "expired" | "full" | "revoked";
+}
+export interface RegisterRequest {
+  inviteCode: string;
+  username: string;
+  password: string;
+}
 export interface LearnerBackgroundSnapshot extends LearnerProfile {
   cohortId: string | null;
   cohortName: string | null;
