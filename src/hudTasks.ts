@@ -32,12 +32,17 @@ export type Quest = {
   controls?: string[];
 };
 export function dailyQuests(d: Daily): Quest[] {
+  const analyzerChecked =
+    dailyProbes.every((id) => d.drains[id] === "正常") &&
+    ["左側", "右側"].every((id) => d.mix[id] === "正常");
   const targets = [
     ["console"],
     ["console"],
-    d.wipeAccessible
-      ? dailyProbes.filter((id) => !d.wiped.includes(id))
-      : ["analyzer"],
+    !d.instrument.mainLid
+      ? ["analyzer"]
+      : !d.instrument.analyzerMaintenance
+        ? ["console"]
+        : dailyProbes.filter((id) => !d.wiped.includes(id)),
     d.mode === "inspect"
       ? [
           ...dailyProbes.filter((id) => d.drains[id] !== "正常"),
@@ -69,9 +74,7 @@ export function dailyQuests(d: Daily): Quest[] {
                 : id
               : !d.instrument.mainLid
                 ? "analyzer"
-                : !d.instrument.analyzerMaintenance
-                  ? "console"
-                  : id,
+                : id,
           ),
       ),
     ],
@@ -83,7 +86,7 @@ export function dailyQuests(d: Daily): Quest[] {
     true,
     true,
     true,
-    d.canInspect || !d.iseDrainValid,
+    dailyProbes.every((id) => d.wiped.includes(id)) || !d.iseDrainValid,
     true,
     d.canPrime && d.iseReady,
     d.canCalibrate && d.iseReady,
@@ -122,9 +125,11 @@ export function dailyQuests(d: Daily): Quest[] {
       ? "開啟 ISE 黑色上蓋，在 CLEAN 位置放入裝滿 Cleaning Solution 的杯子。"
       : "關閉 module 鐵蓋，取消 ISE Maintenance，選 Cleaning。",
     "確認三瓶 ISE 試劑、關閉 module 鐵蓋並勾選 ISE Maintenance，在電腦執行三次 Total Prime。",
-    "取出用過 CLEAN，四個校正杯各至少十滴；取消 ISE Maintenance 後執行 Serum／Urine 校正並檢查結果。",
+    d.instrument.iseMaintenance
+      ? "請關閉 ISE Maintenance（取消勾選），再執行 Serum／Urine 校正。"
+      : "取出用過 CLEAN，四個校正杯各至少十滴；取消 ISE Maintenance 後執行 Serum／Urine 校正並檢查結果。",
     "在 Reagent Management 檢查、記錄及更換必要試劑；溫度、Index 與十二瓶補充完成後執行 All positions。",
-    "逐瓶補滿或更換十二瓶。依所選槽位開啟對應上蓋及 Maintenance，不提供一鍵全部補滿。",
+    "先補滿或更換十二瓶，再執行試劑更換與 All positions。開啟對應上蓋即可，CLN／Diluent／DET 不需勾選 Analyzer Maintenance。",
     "開啟對應前／後櫃門，分別記錄水氣與漏水；前方四支及後方整組都須確認。",
     "開啟 Standard／Buffer 黑蓋及 Reference 櫃門，逐瓶檢查，並更換不足者。",
     "其他項目完成後，在 Rack Requisition Entry 保存 Calibration，再一次 Entry 保存 Serum／Urine QC。",
@@ -139,14 +144,27 @@ export function dailyQuests(d: Daily): Quest[] {
     ["Start Condition", d.editing ? "New Index" : "Edit"],
     [
       "Analyzer Maintenance",
+      ...(!d.instrument.analyzerMaintenance
+        ? ["input:Analyzer Maintenance"]
+        : []),
       "主蓋開啟",
+      "Cleaning Probe",
       ...dailyProbes
         .filter((id) => practiceAction(d, "wipe", id).enabled)
         .map((id) => `酒精棉擦拭 ${id}`),
     ],
     [
       "Analyzer Maintenance",
-      d.canInspect ? "Inspect Probe & Mixing Bar" : "Cleaning Probe",
+      ...(d.instrument.analyzerMaintenance === analyzerChecked
+        ? ["input:Analyzer Maintenance"]
+        : []),
+      ...(d.mode !== "inspect" ? ["Inspect Probe & Mixing Bar"] : []),
+      ...dailyProbes
+        .filter((id) => d.drains[id] !== "正常")
+        .map((id) => `select:${id} 排水`),
+      ...["左側", "右側"]
+        .filter((id) => d.mix[id] !== "正常")
+        .map((id) => `select:${id} mixing bars`),
     ],
     [
       "ISE Maintenance",
@@ -162,7 +180,15 @@ export function dailyQuests(d: Daily): Quest[] {
       ...(d.instrument.iseModule ? ["input:ISE module 蓋開啟"] : []),
       ...(d.canPrime && d.iseReady ? ["Total Prime"] : []),
     ],
-    ["ISE Maintenance", "Calibration"],
+    [
+      "ISE Maintenance",
+      "Calibration",
+      ...(d.instrument.iseMaintenance ? ["input:ISE Maintenance"] : []),
+      ...(d.instrument.iseModule ? ["input:ISE module 蓋開啟"] : []),
+      ...(!d.instrument.iseMaintenance && !d.instrument.iseModule
+        ? ["Serum/Urine Start"]
+        : []),
+    ],
     ["Reagent Management", "Details"],
     ["日保養補充與檢查"],
     ["日保養補充與檢查"],
@@ -184,8 +210,13 @@ export function dailyQuests(d: Daily): Quest[] {
     [
       dailyProbes.filter((id) => d.drains[id] === "正常").length +
         ["左側", "右側"].filter((id) => d.mix[id] === "正常").length +
-        Number(d.iseDrainValid),
-      9,
+        Number(d.iseDrainValid) +
+        Number(
+          dailyProbes.every((id) => d.drains[id] === "正常") &&
+            ["左側", "右側"].every((id) => d.mix[id] === "正常") &&
+            !d.instrument.analyzerMaintenance,
+        ),
+      10,
     ],
     [Number(d.cleaned), 1],
     [d.prime, 3],
@@ -237,19 +268,47 @@ export function dailyQuests(d: Daily): Quest[] {
     ],
   ];
   counts.push([d.loadingProgress.completed, d.loadingProgress.total]);
-  return dailySteps.map(([label, route], i) => ({
-    id: `daily-${i}`,
-    label,
-    route,
-    done: !!d.completed[i],
-    available: available[i],
-    reason: available[i] ? "" : reasons[i],
-    targets: targets[i],
-    instruction: instructions[i],
-    controls: controls[i],
-    count: counts[i][0],
-    total: counts[i][1],
-  }));
+  return dailySteps.map(([label, route], i) => {
+    // Guidance metadata above follows the original reagent/supply order.
+    const source = i === 7 ? 8 : i === 8 ? 7 : i;
+    return {
+      id: `daily-${i}`,
+      label,
+      route,
+      done: !!d.completed[i],
+      available: available[source],
+      reason: available[source] ? "" : reasons[source],
+      targets:
+        i === 3 && analyzerChecked && d.instrument.analyzerMaintenance
+          ? ["console"]
+          : targets[source],
+      instruction:
+        i === 3 && analyzerChecked && d.instrument.analyzerMaintenance
+          ? "分析探針排水與攪拌已檢查，請回操作電腦取消勾選 Analyzer Maintenance；ISE 排水另由 ISE Maintenance 執行。"
+          : i === 3 && !d.instrument.analyzerMaintenance && !analyzerChecked
+            ? "先勾選 Analyzer Maintenance，再選 Inspect Probe & Mixing Bar。檢查完成後須取消勾選。"
+            : i === 3 &&
+                analyzerChecked &&
+                !d.instrument.analyzerMaintenance &&
+                !d.iseDrainValid
+              ? "已退出 Analyzer Maintenance。接著到 ISE Maintenance → Replace Sample Probe 設定 DIAG，執行並記錄 ISE 排水結果。"
+              : instructions[source],
+      controls:
+        i === 3 && analyzerChecked && !d.instrument.analyzerMaintenance
+          ? d.iseDrainValid
+            ? []
+            : [
+                "ISE Maintenance",
+                ...(!d.instrument.iseMaintenance
+                  ? ["input:ISE Maintenance"]
+                  : []),
+                "Replace Sample Probe",
+              ]
+          : controls[source],
+      count: counts[source][0],
+      total: counts[source][1],
+    };
+  });
 }
 export function weeklyQuests(w: Weekly): Quest[] {
   const done = weeklyCompletion(w);

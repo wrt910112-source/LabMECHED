@@ -38,6 +38,7 @@ function scenario(source = "model", restored, version = dailyRubricVersion) {
     return out;
   };
   return {
+    version,
     run,
     get state() {
       return state;
@@ -95,6 +96,7 @@ function manual(x) {
   });
   assert.equal(x.run("diag", "ise").error, "");
   assert.equal(x.run("drain-result", "ISE", "正常").error, "");
+  if (x.version === "AU5800-2026-10-28-v6") x.run("maintenance", "analyzer", true);
   for (const id of dailyProbes) assert.equal(x.run("daily-wipe", id).error, "");
   x.run("maintenance", "analyzer", true);
   x.run("daily-mode", undefined, "inspect");
@@ -117,11 +119,14 @@ function rack(x) {
 }
 function complete(source = "model", version = dailyRubricVersion) {
   const x = scenario(source, undefined, version);
+  const current = version === "AU5800-2026-10-28-v6";
   manual(x);
+  if (current) x.run("maintenance", "analyzer", false);
   clean(x);
   iseBottles(x);
   primeCal(x);
   supplies(x);
+  if (current) x.run("maintenance", "analyzer", false);
   syringes(x);
   assert.equal(register(x).error, "");
   assert.equal(rack(x).error, "");

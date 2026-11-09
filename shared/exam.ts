@@ -831,6 +831,7 @@ function applyBaseCommand(
             slotById[id].module,
             busy,
             !revisedWorkstation,
+            kind === "weekly" || !hasPreparation(version),
           )) ||
         (!hardware && !physical())
       )
@@ -1014,7 +1015,7 @@ function applyBaseCommand(
       out.label =
         value === "wipe" ? "Cleaning Probe" : "Inspect Probe & Mixing Bar";
       if (busy) return fail("運轉期間啟動探針程序", "儀器正在運轉。");
-      if ((!modern || value === "inspect") && !s.maintenance)
+      if ((!modern || value === "inspect" || hasPreparation(version)) && !s.maintenance)
         return fail("未進入 Maintenance 就啟動探針程序", "儀器不在保養模式。");
       s.dailyMode = value;
       if (value === "inspect") {
@@ -1026,16 +1027,18 @@ function applyBaseCommand(
     case "daily-wipe":
       if (!dailyProbes.includes(id)) return fail("無效探針");
       out.label = `${id} 酒精棉擦拭`;
-      if (modern ? !canWipe(instrument, busy) : !physical())
+      if (modern ? !canWipe(instrument, busy) || (hasPreparation(version) && !instrument.analyzerMaintenance) : !physical())
         return fail(
           "探針擦拭時儀器狀態不允許",
           modern
-            ? "分析單元主蓋未開啟或儀器正在運轉。"
+            ? "請開啟分析單元主蓋、勾選 Analyzer Maintenance，並等待儀器停止。"
             : "主蓋、保養模式或運轉狀態不允許操作。",
         );
       s.wiped = add(s.wiped, id);
       break;
     case "daily-drain":
+      if (hasPreparation(version) && !instrument.analyzerMaintenance)
+        return fail("請先勾選 Analyzer Maintenance。");
       if (!dailyProbes.includes(id) || !result()) return fail("無效排水紀錄");
       if (s.dailyMode !== "inspect") {
         note("未執行 Inspect Probe 就記錄排水");
@@ -1053,6 +1056,8 @@ function applyBaseCommand(
       if (value === "異常") note(`${id} 排水異常`);
       break;
     case "daily-mix":
+      if (hasPreparation(version) && !instrument.analyzerMaintenance)
+        return fail("請先勾選 Analyzer Maintenance。");
       if (!["左側", "右側"].includes(id) || !result())
         return fail("無效攪拌紀錄");
       if (s.dailyMode !== "inspect") {
@@ -1423,6 +1428,7 @@ export function dailyExamReadiness(state: EngineState, version: string) {
   const s = state.sim,
     revised = version !== rubricVersion;
   const base = dailyReadiness({
+    analyzerMaintenance: hasPreparation(version) ? s.instrument?.analyzerMaintenance : false,
     ...s,
     drains: Object.fromEntries(
       Object.entries(s.dailyDrains).filter(
@@ -1514,6 +1520,7 @@ export function attemptChecks(
       ),
     );
     group("inspect", "排水與攪拌檢查", [
+      ...(hasPreparation(version) ? [item("analyzer-maintenance-off", "檢查後取消 Analyzer Maintenance", !s.instrument?.analyzerMaintenance)] : []),
       ...(hasDailyIseDrain(version)
         ? [
             item(

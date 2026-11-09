@@ -122,7 +122,7 @@ export function MaintenanceSurface({
                 <button
                   key={`${i}-${j}`}
                   disabled={
-                    busy || (ise && iseInterlocks && (!enabled || blocked))
+                    busy || !enabled || (ise && iseInterlocks && blocked)
                   }
                   onClick={() => perform(name)}
                 >

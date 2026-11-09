@@ -82,25 +82,29 @@ export default function Workstation({
   }, [open]);
   useEffect(() => {
     const elements = [
-      ...(dialog.current?.querySelectorAll<HTMLElement>("button,input") || []),
+      ...(dialog.current?.querySelectorAll<HTMLElement>("button,input,select") || []),
     ];
     const marked: HTMLElement[] = [];
     for (const el of elements) {
       const label =
-        el instanceof HTMLInputElement
-          ? el.closest("label")?.textContent?.trim()
+        el instanceof HTMLInputElement || el instanceof HTMLSelectElement
+          ? el.getAttribute("aria-label") || el.closest("label")?.textContent?.trim()
           : el.textContent?.trim();
       if (
         open &&
         guidance &&
         label &&
         guideControls.includes(
-          el instanceof HTMLInputElement ? `input:${label}` : label,
+          el instanceof HTMLInputElement ? `input:${label}` : el instanceof HTMLSelectElement ? `select:${label}` : label,
         ) &&
         !(el as HTMLButtonElement).disabled
       ) {
         el.classList.add("hud-control-target");
         marked.push(el);
+        if (el instanceof HTMLInputElement && el.type === "checkbox") {
+          const parent = el.closest("label");
+          if (parent) { parent.classList.add("hud-control-target"); marked.push(parent); }
+        }
       }
     }
     return () =>
@@ -263,12 +267,7 @@ export default function Workstation({
           AU5800 <span>操作工作站</span>
         </strong>
         <span className="ws-simulation">教學模擬 · 未連接實機</span>
-        <button
-          className="daily-nav"
-          onClick={() => navigate(weekly ? "周保養" : "日保養")}
-        >
-          {weekly ? "周保養" : "日保養"}
-        </button>
+        {weekly && <button onClick={() => navigate("周保養")}>周保養</button>}
         {weekly && (
           <button onClick={() => onWeeklyModel(weekly.target)}>
             到模型操作
@@ -311,6 +310,7 @@ export default function Workstation({
       ) : page === "日保養補充與檢查" ? (
         <>
           <DailyTasksPanel
+            guidance={daily.active}
             tasks={daily.tasks}
             instrument={daily.instrument}
             bottles={bottles}
@@ -335,7 +335,7 @@ export default function Workstation({
               ? daily.calibrationNeeds
               : undefined
           }
-          autoCalibration={daily.active && daily.reagentChecked}
+          autoCalibration={false}
         />
       ) : page === "Home" ? (
         <>

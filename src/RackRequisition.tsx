@@ -560,8 +560,8 @@ function CalCells({
           aria-label={`${id} RB`}
           aria-pressed={rb}
           disabled={!editing}
-          className={`${rb ? "rb-selected" : ""} ${expiredRb ? "stability-expired" : ""}`}
-          title={expiredRb ? "expired" : undefined}
+          className={`${rb ? "rb-selected" : ""} ${editing && expiredRb && !rb ? "rack-required" : ""}`}
+          title={expiredRb ? "本次需登記 RB" : undefined}
           onClick={() => select(id, "rb")}
         >
           {rb ? "✓" : ""}
@@ -573,8 +573,8 @@ function CalCells({
           aria-label={`${id} Cal.`}
           aria-pressed={cal}
           disabled={!editing}
-          className={`${cal ? "cal-selected" : ""} ${expiredCal ? "stability-expired" : ""}`}
-          title={expiredCal ? "expired" : undefined}
+          className={`${cal ? "cal-selected" : ""} ${editing && expiredCal && !cal ? "rack-required" : ""}`}
+          title={expiredCal ? "本次需登記 Calibration" : undefined}
           onClick={() => select(id, "cal")}
         >
           {cal ? "✓" : ""}

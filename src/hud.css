@@ -565,12 +565,12 @@
 .guidance-markers span {
   position: absolute;
   transform: translate(-50%, -100%);
-  border: 1px solid #78dce8;
+  border: 2px solid #78ecff;
   border-radius: 7px;
   padding: 8px 10px;
   color: #baf7fb;
   background: #123e4ee6;
-  box-shadow: 0 0 16px #49d9ec33;
+  box-shadow: 0 0 0 5px #49d9ec38, 0 0 24px 10px #49d9ec80, 0 0 48px 16px #49d9ec40;
   font-size: 11px;
   pointer-events: none;
   white-space: nowrap;
@@ -974,9 +974,11 @@
   }
 }
 
-.workstation .hud-control-target {
-  outline: 2px solid #3295ad !important;
+.workstation .hud-control-target,
+.daily-tasks-panel .hud-control-target {
+  outline: 3px solid #49d9ef !important;
   outline-offset: 2px;
+  box-shadow: 0 0 0 5px #49d9ef35, 0 0 22px 7px #49d9ef85, 0 0 40px 12px #49d9ef40 !important;
 }
 .hud-toast {
   z-index: 200;

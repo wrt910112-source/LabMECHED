@@ -225,8 +225,7 @@ export default function ExamPortal({
             <h2>登入 LabMECHED</h2>
             {requiresInitialization && (
               <p role="status">
-                此資料庫尚無管理員，請由本機執行 npm run account:bootstrap
-                初始化。本站不提供公開註冊。
+                此資料庫尚無管理員，請聯絡網站管理者完成帳號初始化後再登入。本站不提供公開註冊。
               </p>
             )}
             <label>

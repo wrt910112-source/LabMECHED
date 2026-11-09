@@ -4,6 +4,7 @@ import { MaintenanceSurface } from "./MaintenanceSurface";
 import {
   hasDailyIseDrain,
   hasRevisedWorkstation,
+  hasPreparation,
   canHandleBottle,
 } from "../shared/dailyScenario";
 import { PartInformation } from "./SimulatorHud";
@@ -19,7 +20,7 @@ import {
 import { Monitor, Box, Plus, Minus, RotateCcw, Flag } from "lucide-react";
 import Viewer, { type CameraRequest, type SceneSelection } from "./Viewer";
 import PreparationPanel from "./PreparationPanel";
-import type { PreparationView } from "./preparationModel";
+import { preparationViews, type PreparationView } from "./preparationModel";
 import { api, ApiError } from "./examApi";
 import {
   kindNames,
@@ -647,7 +648,7 @@ export default function ExamRoom({
             <button
               aria-label="重設考試視角"
               onClick={() =>
-                setRequest((r) => ({ ...views[0], serial: r.serial + 1 }))
+                setRequest((r) => ({ ...(preparationView ? preparationViews[preparationView] : views[0]), serial: r.serial + 1 }))
               }
             >
               <RotateCcw size={17} />
@@ -894,7 +895,10 @@ export default function ExamRoom({
             disabled={disabled || place !== "model"}
             feedback={failure || message}
             view={preparationView}
-            onView={setPreparationView}
+            onView={(view) => {
+              setPreparationView(view);
+              setRequest((r) => ({ ...preparationViews[view], serial: r.serial + 1 }));
+            }}
             onClose={() => setPreparationView(null)}
             onComputer={() => {
               setRackNavigation((n) => n + 1);
@@ -1431,6 +1435,7 @@ function BottleControls({
         slotById[id].module,
         disabled,
         !hasRevisedWorkstation(version),
+        weekly || !hasPreparation(version),
       )
     : !disabled && s.maintenance && s.lid;
   return (
@@ -1809,8 +1814,8 @@ function ExamWorkstation({
                             active: true,
                             mode: s.dailyMode,
                             wiped: s.wiped,
-                            wipeAccessible: !disabled,
-                            canInspect: !disabled,
+                            wipeAccessible: !disabled && !!s.instrument?.mainLid && !!s.instrument?.analyzerMaintenance,
+                            canInspect: !disabled && !!s.instrument?.analyzerMaintenance,
                             drains: s.dailyDrains,
                             mix: s.dailyMix,
                             setWiped: () => {},
@@ -2373,9 +2378,7 @@ function RackControls({
         calibrationNeeds={
           s.instrument ? calibrationNeeds(s.reagents) : undefined
         }
-        autoCalibration={
-          !!s.instrument && s.reagentChecked && !s.calibrationEntered
-        }
+        autoCalibration={false}
         d={{ rack: s.rack, setRack: () => {} }}
         notify={() => {}}
         onEntry={(type, selection, category) =>

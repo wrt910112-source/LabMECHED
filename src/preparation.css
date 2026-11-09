@@ -201,6 +201,46 @@
   display: block;
   margin-top: 5px;
 }
+.prep-requirements {
+  position: absolute;
+  left: 24px;
+  top: 92px;
+  width: min(310px, 26vw);
+  max-height: calc(100% - 150px);
+  overflow: auto;
+  pointer-events: auto;
+  padding: 14px;
+  border: 1px solid #73e4f1;
+}
+.prep-requirements summary { cursor: pointer; font-size: 17px; font-weight: 700; }
+.prep-rack-requirements { display: grid; gap: 8px; }
+.prep-rack-requirements button { display: flex; justify-content: space-between; gap: 8px; text-align: left; }
+.prep-rack-requirements button[data-rack="RB"] { border-left: 5px solid #49b7ff; }
+.prep-rack-requirements button[data-rack="CALI"] { border-left: 5px solid #f3df55; }
+.prep-rack-requirements button[data-rack="QC"] { border-left: 5px solid #49dc9d; }
+.prep-requirements ul { padding-left: 20px; margin: 8px 0; line-height: 1.8; }
+.prep-requirements li small { float: right; color: #abd0d9; }
+.prep-cup-status {
+  border: 2px solid #67e4f4;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 0 18px 4px #49d9ec40;
+}
+.prep-cup-status small { display: block; margin-top: 5px; }
+.prep-loading-route {
+  position: absolute;
+  left: 50%;
+  top: 90px;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border: 1px solid #67e4f4;
+  color: #bff6ff;
+}
+@media (max-width: 900px) {
+  .prep-requirements { left: 12px; width: 220px; max-height: 45%; }
+  .prep-top { flex-wrap: wrap; }
+  .prep-requirements, .prep-rail { top: 130px; }
+}
 .viewer-host[data-preparation="true"] .scene-markers,
 .viewer-host[data-preparation="true"] .practice-markers,
 .viewer-host[data-preparation="true"] .guidance-markers {
@@ -216,6 +256,10 @@
 .simulator-shell[data-preparation="true"] .stage-caption {
   visibility: hidden;
 }
+.simulator-shell[data-preparation="true"] .stage-tools {
+  right: 390px;
+  z-index: 33;
+}
 .exam-room[data-preparation="true"] .exam-model-panel,
 .exam-room[data-preparation="true"] .exam-view-tools {
   visibility: hidden;
@@ -227,6 +271,7 @@
   display: none;
 }
 @media (max-width: 1450px) {
+  .simulator-shell[data-preparation="true"] .stage-tools { right: 366px; }
   .prep-rail {
     width: 326px;
   }

@@ -18,6 +18,7 @@ export interface PreparationCup {
 export interface PreparationState {
   scenario: string;
   selection: string | null;
+  selectedCup?: string;
   source: string | null;
   pipette: { materialId: string; remaining: number } | null;
   cups: PreparationCup[];
@@ -52,6 +53,7 @@ export function initialPreparation(): PreparationState {
   return {
     scenario: preparationScenario.id,
     selection: null,
+    selectedCup: "cup-1",
     source: null,
     pipette: null,
     results: { calibration: "not-run", qc: "not-run" },
@@ -166,6 +168,7 @@ export function applyPreparation(
       return fail("無效的備料物件。");
     state.selection = id;
     if (kind === "source") state.source = key;
+    if (kind === "cup") state.selectedCup = key;
     return { state, error: "" };
   }
   if (a === "reset") return { state: initialPreparation(), error: "" };
@@ -251,8 +254,6 @@ export function applyPreparation(
     if (r.location !== "bench") return fail("檢體架已離開工作台。");
     if (!state.cups.some((c) => c.rack === rack))
       return fail("空架無法放至進樣區。");
-    if (Object.values(state.racks).some((x) => x.location === "entry"))
-      return fail("進樣區已有檢體架。");
     r.location = "entry";
     r.loadedToken = null;
   } else if (a === "push") {

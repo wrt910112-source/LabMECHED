@@ -25,8 +25,46 @@ import {
   attemptProgress,
   examPreparationGate,
 } from "../shared/exam.ts";
-import { complete } from "./daily-fixture.mjs";
+import { complete, scenario, manual } from "./daily-fixture.mjs";
 const gate = { ready: true, token: "confirmed-test-session" };
+test("all three racks can wait in the entry area and cups remain selectable after loading", () => {
+  let state = initialPreparation();
+  const run = (command) => {
+    const result = applyPreparation(state, command, gate);
+    assert.equal(result.error, "");
+    state = result.state;
+  };
+  for (const [index, rack, source] of [[1, "RB", "water"], [2, "CALI", "lcc1"], [3, "QC", "crp-b"]]) {
+    run({ action: "select", target: `source:${source}` });
+    run({ action: "aspirate" });
+    run({ action: "dispense", target: `cup-${index}` });
+    run({ action: "place", target: `cup-${index}`, rack, slot: 1 });
+    run({ action: "stage", rack });
+  }
+  assert.ok(Object.values(state.racks).every((r) => r.location === "entry"));
+  for (const rack of ["RB", "CALI", "QC"]) run({ action: "push", rack });
+  const before = structuredClone(state.cups);
+  run({ action: "select", target: "cup:cup-3" });
+  assert.equal(state.selection, "cup:cup-3");
+  assert.deepEqual(state.cups, before);
+  assert.ok(Object.values(state.racks).every((r) => r.location === "loaded"));
+});
+test("current analyzer actions require Maintenance, supplies do not, and Rack waits for exit", () => {
+  const x = scenario("model", undefined, currentDailyVersion);
+  x.run("cover", "mainLid", true);
+  assert.equal(x.run("daily-mode", undefined, "wipe").accepted, false);
+  assert.equal(x.run("daily-mode", undefined, "inspect").accepted, false);
+  assert.equal(x.run("daily-wipe", "R1-1").accepted, false);
+  assert.equal(x.run("bottle", "r1-inner-1", "refill").error, "");
+  manual(x);
+  assert.equal(x.run("maintenance", "analyzer", false).error, "");
+  assert.equal(x.run("daily-drain", "R1-1", "正常").accepted, false);
+  const full = complete("model", currentDailyVersion);
+  full.run("maintenance", "analyzer", true);
+  assert.equal(examPreparationGate(full.state, currentDailyVersion).ready, false);
+  full.run("maintenance", "analyzer", false);
+  assert.equal(examPreparationGate(full.state, currentDailyVersion).ready, true);
+});
 test("free simulation accepts a partially dispensed AE cup without changing the assessed reducer rules", () => {
   let state = initialPreparation();
   for (const command of [
@@ -82,10 +120,11 @@ test("catalog separates 14 CALI / 10 QC levels / water from fixed sixteen; uncer
   assert.equal(materialById["mas-3"].concentration, "L3");
   assert.equal(materialById.etoh2.concentration, "100 mg/dL");
   assert.equal(materialById["ita-3"].concentration, "QC3");
-  assert.equal(materialById["ita-3"].identity, "pending");
+  assert.equal(materialById["ita-3"].identity, "confirmed");
+  assert.equal(resolveMaterialName("ITA-3")?.id, "ita-3");
   assert.equal(resolveMaterialName("ITA-2"), undefined);
   assert.equal(resolveMaterialName("CRPG-2"), undefined);
-  assert.equal(resolveMaterialName("CRPH-2"), undefined);
+  assert.equal(resolveMaterialName("CRPH-2")?.id, "crp-b");
   assert.equal(materials.filter((m) => m.name === "CRPH-1").length, 1);
   assert.equal(legacyMaterialLabel("CRPG-2").raw, "CRPG-2");
   assert.match(materialById.system.storageText, /馬上使用/);
@@ -112,12 +151,16 @@ test("catalog separates 14 CALI / 10 QC levels / water from fixed sixteen; uncer
     ),
   );
 });
-test("v6 full sixteen process yields thirteen equal groups; v5 scoring and twelve rules remain identical", () => {
+test("current sixteen process yields thirteen equal groups with Analyzer exit; legacy scoring stays intact", () => {
   const x = complete("model", currentDailyVersion),
     old = complete("model", legacyDailyV5);
   assert.equal(x.score().score, 92.3);
   assert.equal(old.score().score, 100);
-  assert.deepEqual(x.score().groups.slice(0, 12), old.score().groups);
+  const priorChecks = x.score().groups.slice(0, 12).map((g) => ({
+    ...g, items: g.items.filter((item) => item.id !== "analyzer-maintenance-off"),
+  }));
+  assert.deepEqual(priorChecks, old.score().groups);
+  assert.equal(x.score().groups.find((g) => g.id === "inspect").items.find((i) => i.id === "analyzer-maintenance-off").completed, true);
   fillAll(x);
   assert.equal(x.score().groups.length, 13);
   assert.equal(x.score().score, 100);
@@ -146,7 +189,7 @@ test("v6 full sixteen process yields thirteen equal groups; v5 scoring and twelv
   );
   assert.equal(
     p.items.find((i) => i.materialId === "crp-b").identity,
-    "pending",
+    "confirmed",
   );
   assert.ok(
     p.items.every(

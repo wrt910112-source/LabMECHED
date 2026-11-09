@@ -288,6 +288,18 @@
   padding: 12px;
   overflow: auto;
 }
+.daily-interlock {
+  padding: 12px;
+  border: 2px solid #49d9ef;
+  border-radius: 6px;
+  box-shadow: 0 0 18px 4px #49d9ef60;
+  font-weight: 700;
+}
+.daily-tasks-panel .daily-task-guidance {
+  width: 100%;
+  margin: 4px 0;
+  line-height: 1.6;
+}
 .daily-tasks-panel fieldset {
   margin: 8px 0;
   border: 1px solid #bdcec4;

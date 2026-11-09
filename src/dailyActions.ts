@@ -16,7 +16,7 @@ export function practiceAction(d: Daily, action: PracticeAction, target = "") {
     reason = !d.active
       ? "請先開始練習"
       : !d.wipeAccessible
-        ? "請先開啟分析單元主蓋"
+        ? "請先開啟分析單元主蓋並勾選 Analyzer Maintenance"
         : d.wiped.includes(target)
           ? "此探針已擦拭"
           : "";

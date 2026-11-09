@@ -17,6 +17,7 @@ export function DailyTasksPanel({
   instrument,
   bottles,
   disabled = false,
+  guidance = false,
   section = "all",
   command,
   cover,
@@ -27,6 +28,7 @@ export function DailyTasksPanel({
   instrument: InstrumentState;
   bottles: BottleStates;
   disabled?: boolean;
+  guidance?: boolean;
   section?: "all" | "syringes" | "ise";
   command: (c: DailyTaskCommand) => void;
   cover: (
@@ -123,7 +125,12 @@ export function DailyTasksPanel({
               ["iseReference", "Reference 櫃門"],
             ] as const
           ).map(([id, label]) => (
-            <label key={id}>
+            <label
+              key={id}
+              className={
+                guidance && !instrument[id] ? "hud-control-target" : undefined
+              }
+            >
               <input
                 type="checkbox"
                 checked={!!instrument[id]}
@@ -132,39 +139,80 @@ export function DailyTasksPanel({
               {label}
             </label>
           ))}
-          {iseReagentIds.map((id) => (
-            <article key={id}>
-              <button
-                onClick={() =>
-                  focus?.(id === "reference" ? "ise-reference" : "ise-reagents")
-                }
-              >
-                {iseReagentNames[id]}
-              </button>
-              <span>
-                液量：
-                {tasks.iseReagents[id].checked
-                  ? tasks.iseReagents[id].sufficient
-                    ? "足夠"
-                    : "不足"
-                  : "尚未檢查"}
-              </span>
-              <button
-                onClick={() =>
-                  command({ type: "ise-reagent", target: id, value: "inspect" })
-                }
-              >
-                檢查 {iseReagentNames[id]}
-              </button>
-              <button
-                onClick={() =>
-                  command({ type: "ise-reagent", target: id, value: "replace" })
-                }
-              >
-                更換 {iseReagentNames[id]}
-              </button>
-            </article>
-          ))}
+          {iseReagentIds.map((id) => {
+            const open = !!(id === "reference"
+              ? instrument.iseReference
+              : instrument.iseReagents);
+            const reagent = tasks.iseReagents[id];
+            return (
+              <article key={id} aria-label={`${iseReagentNames[id]} 操作`}>
+                <button
+                  onClick={() =>
+                    focus?.(
+                      id === "reference" ? "ise-reference" : "ise-reagents",
+                    )
+                  }
+                >
+                  {iseReagentNames[id]}
+                </button>
+                <span>
+                  液量：
+                  {tasks.iseReagents[id].checked
+                    ? tasks.iseReagents[id].sufficient
+                      ? "足夠"
+                      : "不足"
+                    : "尚未檢查"}
+                </span>
+                {guidance && (
+                  <p className="daily-task-guidance">
+                    {!open
+                      ? `請先開啟${id === "reference" ? " Reference 櫃門" : " Standard／Buffer 罩"}。`
+                      : !reagent.checked
+                        ? `請先點選「檢查 ${iseReagentNames[id]}」。`
+                        : reagent.replaced
+                          ? `${iseReagentNames[id]} 已更換完成。`
+                          : !reagent.sufficient
+                            ? `液量不足，請點選「更換 ${iseReagentNames[id]}」。`
+                            : `液量足夠，可保留；如需更換，點選「更換 ${iseReagentNames[id]}」。`}
+                  </p>
+                )}
+                <button
+                  disabled={!open}
+                  className={
+                    guidance && open && !reagent.checked
+                      ? "hud-control-target"
+                      : undefined
+                  }
+                  onClick={() =>
+                    command({
+                      type: "ise-reagent",
+                      target: id,
+                      value: "inspect",
+                    })
+                  }
+                >
+                  檢查 {iseReagentNames[id]}
+                </button>
+                <button
+                  disabled={!open}
+                  className={
+                    guidance && open && reagent.checked && !reagent.replaced
+                      ? "hud-control-target"
+                      : undefined
+                  }
+                  onClick={() =>
+                    command({
+                      type: "ise-reagent",
+                      target: id,
+                      value: "replace",
+                    })
+                  }
+                >
+                  更換 {iseReagentNames[id]}
+                </button>
+              </article>
+            );
+          })}
         </fieldset>
       )}
     </section>

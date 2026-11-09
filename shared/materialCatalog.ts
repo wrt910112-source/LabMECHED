@@ -365,7 +365,7 @@ export const qcMaterials: Material[] = [
   ),
   qc(
     "crp-b",
-    "CRP 第二濃度｜代碼待確認",
+    "CRPH-2",
     "CRP (Latex) Control Serum",
     null,
     "無需配置，上機前需混合均勻。",
@@ -374,9 +374,9 @@ export const qcMaterials: Material[] = [
     ["hsCRP"],
     [
       "CRPG-2 已被使用者更正，不再作為正式可選名稱。",
-      "不推定 CRPH-2，兩份需求保持獨立。",
+      "第二濃度名稱由使用者確認為 CRPH-2。",
     ],
-    "pending",
+    "confirmed",
   ),
   qc(
     "ita-1",
@@ -391,7 +391,7 @@ export const qcMaterials: Material[] = [
   ),
   qc(
     "ita-3",
-    "ITA-2｜濃度對應待確認",
+    "ITA-3",
     "ITA Serum",
     "QC3",
     "無需配置，使用前依說明書方式回溫。",
@@ -400,9 +400,9 @@ export const qcMaterials: Material[] = [
     ["ASLO", "C3", "C4", "IgA", "IgG", "IgM", "PALB", "RF", "TRF", "CRPN"],
     [
       "使用於 Special。",
-      "本院 QC.jpg 標籤為 ITA-3；任務 ITA-2 與 QC3 的正式對應仍待確認，未改成 QC2。",
+      "本院 QC.jpg 標籤及使用者確認名稱為 ITA-3，濃度為 QC3。",
     ],
-    "pending",
+    "confirmed",
   ),
   ...[1, 2].map((n) =>
     qc(
@@ -452,7 +452,7 @@ for (const m of qcMaterials)
   if (m.id === "ita-3")
     m.aliases = [
       { name: "ITA-2", status: "pending" },
-      { name: "ITA-3", status: "pending" },
+      { name: "ITA-3", status: "confirmed" },
     ];
 export const materials: Material[] = [...calMaterials, ...qcMaterials, water];
 // These transcribed conditions describe the reference data, never timed gameplay gates.
@@ -566,9 +566,9 @@ export const preparationRequirements = [
   ["ae-1", "AE-1", "QC"],
   ["ae-2", "AE-2", "QC"],
   ["ita-1", "ITA-1", "QC"],
-  ["ita-3", "ITA-2｜對應待確認", "QC"],
+  ["ita-3", "ITA-3", "QC"],
   ["crp-a", "CRPH-1", "QC"],
-  ["crp-b", "CRP 第二濃度｜代碼待確認", "QC"],
+  ["crp-b", "CRPH-2", "QC"],
   ["urine-qc-1", "Q-U1", "QC"],
   ["urine-qc-2", "Q-U2", "QC"],
 ].map(([materialId, label, rack]) => ({

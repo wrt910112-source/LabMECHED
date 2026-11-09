@@ -11,6 +11,7 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   page,
 }, info) => {
   test.setTimeout(240000);
+  page.setDefaultTimeout(12000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
@@ -27,7 +28,7 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
     await button("Home 主選單").click();
     await button(name).click();
   };
-  await button("日保養").click();
+  await expect(screen.locator(".ws-toolbar").getByRole("button", { name: "日保養", exact: true })).toHaveCount(0);
   await home("Start Condition");
   await expect(button("New Index")).toBeDisabled();
   await home("Analyzer Status");
@@ -44,8 +45,8 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
     path: `test-results/${info.project.name}-daily-start.png`,
   });
   await home("Analyzer Maintenance");
-  await button("Cleaning Probe").click();
-  await expect(screen.getByRole("status")).toContainText("主蓋");
+  await expect(button("Cleaning Probe")).toBeDisabled();
+  await expect(button("Inspect Probe & Mixing Bar")).toBeDisabled();
   await instrument(screen, "主蓋開啟", true);
   await instrument(screen, "Analyzer Maintenance", true);
   await button("Cleaning Probe").click();
@@ -58,6 +59,8 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
     await screen.getByLabel(`${p} 排水`, { exact: true }).selectOption("正常");
   for (const s of ["左側", "右側"])
     await screen.getByLabel(`${s} mixing bars`).selectOption("正常");
+  await instrument(screen, "Analyzer Maintenance", false);
+  await expect(button("Inspect Probe & Mixing Bar")).toBeDisabled();
   await prepareDailyTasks(page, screen);
   await home("Analyzer Maintenance");
   await button("ISE Maintenance").click();
@@ -119,18 +122,20 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
     path: `test-results/${info.project.name}-daily-reagents.png`,
   });
   await iseDrain(screen);
-  await button("日保養").click();
-  await expect(screen.locator(".daily-steps")).toContainText(
-    "Rack Requisition",
-  );
   await expect(screen.locator(".ws-session-hud")).toContainText("11／13");
-  await page.keyboard.press("Escape");
+  await button("退出螢幕 ×").click();
   await page.getByRole("button", { name: "部件目錄", exact: true }).click();
   await page.getByTestId("part-console").click();
   await expect(screen.locator(".ws-session-hud")).toContainText("11／13");
   await home("Rack Requisition");
   await button("Calibration").click();
   await button("Start Entry").click();
+  await expect(screen.locator(".rack-required")).toHaveCount(9);
+  for (const id of ["3.ALT", "5.AST", "15.HDL", "20.LDL", "9.CRE", "4.AMY"])
+    await button(`${id} RB`).click();
+  for (const id of ["15.HDL", "20.LDL", "9.CRE"])
+    await button(`${id} Cal.`).click();
+  await expect(screen.locator(".rack-required")).toHaveCount(0);
   await button("97.Na Cal.").click();
   await button("Entry").click();
   await button("QC").click();
@@ -193,8 +198,8 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   await page.screenshot({
     path: `test-results/${info.project.name}-hud-daily-complete.png`,
   });
-  await button("日保養").click();
-  await button("重設並開始新一輪日保養").click();
+  await button("退出螢幕 ×").click();
+  await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await page.getByRole("button", { name: "重新開始練習", exact: true }).click();
   await page.getByRole("button", { name: "確認重新開始", exact: true }).click();
   await expect(

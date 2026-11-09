@@ -152,6 +152,7 @@ export function useDailyTraining(
       : "ISE 排水異常，排除後須重新確認。";
   }
   const rules = dailyReadiness({
+    analyzerMaintenance: instrument.analyzerMaintenance,
     iseDrainRequired: true,
     iseDrainValid,
     temp,
@@ -173,8 +174,9 @@ export function useDailyTraining(
     extra.syringesReady &&
     extra.iseReady;
   const maintenanceCompleted = [
-    ...rules.beforeRack,
+    ...rules.beforeRack.slice(0, 7),
     extra.suppliesReady,
+    rules.beforeRack[7],
     extra.syringesReady,
     extra.iseReady,
     rackReady &&
@@ -247,7 +249,7 @@ export function useDailyTraining(
     if (name === "Cleaning (Enhanced)")
       return "已建立 Cleaning (Enhanced) 入口；本次日保養使用 Cleaning，增強清洗程序待補。";
     if (!active) return "請先由「日保養」開始本次練習。";
-    if (name === "Inspect Probe & Mixing Bar" && !enabled)
+    if (["Cleaning Probe", "Inspect Probe & Mixing Bar"].includes(name) && !enabled)
       return "請先勾選本頁的 Maintenance box。";
     if (name === "Cleaning Probe") {
       if (!canWipe(instrument)) return "請先開啟分析單元主蓋。";
@@ -305,7 +307,7 @@ export function useDailyTraining(
   function refill(id: string) {
     if (!active) return "請先開始日保養練習。";
     if (!canHandleBottle(instrument, slotById[id].module))
-      return "請開啟對應上蓋並勾選對應 Maintenance。";
+      return "請先開啟對應上蓋。";
     try {
       supplyChanged(
         id,
@@ -339,14 +341,14 @@ export function useDailyTraining(
     instrument,
     setInstrument,
     cupAccessible: canHandleCups(instrument),
-    wipeAccessible: canWipe(instrument),
+    wipeAccessible: canWipe(instrument) && instrument.analyzerMaintenance,
     temp,
     setTemp,
     editing,
     setEditing,
     index,
     setIndex,
-    mode,
+    mode: instrument.analyzerMaintenance ? mode : "",
     wiped,
     setWiped,
     drains,
@@ -368,6 +370,7 @@ export function useDailyTraining(
     reagentReady,
     reagentChecked,
     ...rules,
+    canInspect: rules.canInspect && instrument.analyzerMaintenance,
     rackReady,
     setReagentChecked,
     completed,
@@ -808,6 +811,11 @@ export function Calibration({
         </table>
       </div>
       <small>Normal Range 依照片重現，未用於實機放行判定。</small>
+      {d.instrument.iseMaintenance && (
+        <p className="daily-interlock" role="status">
+          請關閉 ISE Maintenance（取消勾選），再執行 Serum／Urine 校正。可在上方「儀器狀態」取消勾選。
+        </p>
+      )}
       <div className="daily-inline">
         {["Serum Start", "Urine Start", "Serum/Urine Start"].map((n, i) => (
           <button

@@ -12,8 +12,12 @@ import {
   type PreparationState,
   type PreparationGate,
 } from "../shared/preparation";
-export type PreparationView = "bench" | "loading" | "reagent";
+export type PreparationView = "bench" | "loading" | "reagent" | "instrument";
 export const preparationViews = {
+  instrument: {
+    eye: [3.4, 2.7, 5.1] as [number, number, number],
+    target: [0, 0.8, 0.4] as [number, number, number],
+  },
   reagent: {
     eye: [2.2, 2.05, 2.25] as [number, number, number],
     target: [0.77, 0.95, 0.47] as [number, number, number],
@@ -178,6 +182,19 @@ export function createPreparationModel(sources: Material[] = materials) {
     );
     wall.position.y = 0.05;
     group.add(wall);
+    // Include the open mouth in the picking area without changing the visible cup.
+    const pickVolume = new T.Mesh(
+      new T.CylinderGeometry(0.052, 0.038, 0.115, 20),
+      new T.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        colorWrite: false,
+      }),
+    );
+    pickVolume.name = "cup-pick-volume";
+    pickVolume.position.y = 0.0525;
+    group.add(pickVolume);
     const outlineShape = new T.CylinderGeometry(0.049, 0.035, 0.105, 18);
     const outline = new T.LineSegments(
       new T.EdgesGeometry(outlineShape, 15),
@@ -189,6 +206,8 @@ export function createPreparationModel(sources: Material[] = materials) {
     );
     outlineShape.dispose();
     outline.name = "filled-cup-gold-outline";
+    // Decorative lines have a broad default raycast tolerance and must not pick cups.
+    outline.raycast = () => {};
     outline.position.y = 0.0525;
     outline.visible = false;
     // A physical contents marker, independent of identity, rack correctness or guidance.
@@ -239,25 +258,25 @@ export function createPreparationModel(sources: Material[] = materials) {
   );
   guide.rotation.x = Math.PI / 2;
   root.add(guide);
+  const selectedCup = new T.Mesh(
+    new T.TorusGeometry(0.061, 0.006, 8, 40),
+    new T.MeshBasicMaterial({ color: "#67e4f4", depthTest: false }),
+  );
+  selectedCup.name = "selected-preparation-cup";
+  selectedCup.rotation.x = Math.PI / 2;
+  selectedCup.renderOrder = 10;
+  selectedCup.visible = false;
+  root.add(selectedCup);
   const title = caption("CALI / QC · 教學備料台", 1.1, 0.13);
   title.position.set(0, 0.85, 4.34);
   root.add(title);
-  function update(
-    state: PreparationState,
-    gate: PreparationGate,
-    guidance: boolean,
-  ) {
-    rackKinds.forEach((kind, i) => {
-      const r = state.racks[kind];
-      rackModels[kind].scale.setScalar(r.location === "bench" ? 1 : 0.2);
-      rackModels[kind].position.set(
-        ...((r.location === "bench"
-          ? [-0.5, 0.94, 3.65 + i * 0.24]
-          : r.location === "entry"
-            ? [-1.075, 0.934, 0.51]
-            : [-1.075, 0.934, -0.19 + i * 0.18]) as [number, number, number]),
-      );
-    });
+  const lastLocations = new Map<MaterialKind, string>();
+  const motions = new Map<
+    MaterialKind,
+    { start: number; duration: number; path: T.Vector3[] }
+  >();
+  let lastState: PreparationState | null = null;
+  function syncCupPositions(state: PreparationState) {
     state.cups.forEach((c, i) => {
       const visual = cups.get(c.id)!;
       if (c.rack && c.slot !== null) {
@@ -274,6 +293,77 @@ export function createPreparationModel(sources: Material[] = materials) {
           3.47 + Math.floor(i / 4) * 0.19,
         );
       }
+    });
+    const selection = cups.get(
+      state.selectedCup ||
+        (state.selection?.startsWith("cup:")
+          ? state.selection.slice(4)
+          : "cup-1"),
+    );
+    selectedCup.visible = !!selection;
+    if (selection) {
+      selectedCup.position.copy(selection.group.position);
+      selectedCup.position.y += 0.108 * selection.group.scale.x;
+      selectedCup.scale.copy(selection.group.scale);
+    }
+  }
+  function animate(now: number) {
+    const moving = motions.size > 0;
+    for (const [kind, motion] of motions) {
+      const t = T.MathUtils.clamp((now - motion.start) / motion.duration, 0, 1);
+      const segment = Math.min(2, Math.floor(t * 3));
+      rackModels[kind].position.lerpVectors(
+        motion.path[segment],
+        motion.path[segment + 1],
+        Math.min(1, t * 3 - segment),
+      );
+      if (t === 1) motions.delete(kind);
+    }
+    if (moving && lastState) syncCupPositions(lastState);
+    return moving;
+  }
+  function update(
+    state: PreparationState,
+    gate: PreparationGate,
+    guidance: boolean,
+  ) {
+    lastState = state;
+    rackKinds.forEach((kind, i) => {
+      const r = state.racks[kind];
+      const z = 0.51 - i * 0.18;
+      if (r.location !== "loaded") motions.delete(kind);
+      if (r.location === "loaded" && lastLocations.get(kind) === "entry") {
+        const start = Math.max(
+          performance.now(),
+          ...[...motions.values()].map((m) => m.start + m.duration + 100),
+        );
+        motions.set(kind, {
+          start,
+          duration: matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? 1
+            : 1500,
+          path: [
+            rackModels[kind].position.clone(),
+            new T.Vector3(-1.075, 0.934, -0.24),
+            new T.Vector3(-0.655, 0.934, -0.24),
+            new T.Vector3(-0.655, 0.934, z),
+          ],
+        });
+      }
+      lastLocations.set(kind, r.location);
+      rackModels[kind].scale.setScalar(r.location === "bench" ? 1 : 0.2);
+      if (!motions.has(kind))
+        rackModels[kind].position.set(
+          ...((r.location === "bench"
+            ? [-0.5, 0.94, 3.65 + i * 0.24]
+            : r.location === "entry"
+              ? [-1.075, 0.934, 0.51 - i * 0.18]
+              : [-0.655, 0.934, z]) as [number, number, number]),
+        );
+    });
+    syncCupPositions(state);
+    state.cups.forEach((c, i) => {
+      const visual = cups.get(c.id)!;
       visual.liquid.visible = !!c.materialId && c.additions > 0;
       visual.outline.visible = visual.liquid.visible;
       if (visual.materialId !== c.materialId) {
@@ -310,7 +400,12 @@ export function createPreparationModel(sources: Material[] = materials) {
         if (!o.visible) return false;
         o = o.parent;
       }
-      return true;
+      o = h.object;
+      while (o) {
+        if (o.userData.preparationId) return true;
+        o = o.parent;
+      }
+      return false;
     });
     let o: T.Object3D | null = hit?.object || null;
     while (o) {
@@ -319,5 +414,5 @@ export function createPreparationModel(sources: Material[] = materials) {
     }
     return null;
   }
-  return { root, targets, update, hit };
+  return { root, targets, update, hit, animate };
 }

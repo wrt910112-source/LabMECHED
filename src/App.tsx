@@ -50,7 +50,7 @@ import PreparationPanel from "./PreparationPanel";
 import TroubleshootingRoom from "./TroubleshootingRoom";
 import { useTroublePractice } from "./TroubleRuntime";
 import type { ExamKind } from "../shared/exam";
-import type { PreparationView } from "./preparationModel";
+import { preparationViews, type PreparationView } from "./preparationModel";
 import {
   applyPreparation,
   initialPreparation,
@@ -506,7 +506,7 @@ export default function App() {
           throw new Error(
             ise
               ? "請開啟 ISE 黑色上蓋並等待 ISE 停止。"
-              : "請開啟主蓋並勾選 Analyzer Maintenance。",
+              : "請先開啟分析單元主蓋。",
           );
       }
       const next = operateBottle(bottles, selectedSlot, careMode, action);
@@ -532,6 +532,10 @@ export default function App() {
     }
   };
   const reset = () => {
+    if (preparationView) {
+      setRequest((r) => ({ ...preparationViews[preparationView], serial: r.serial + 1 }));
+      return;
+    }
     setSelected("overview");
     setSelectedSlot(null);
     setBottlePanel(false);
@@ -1295,11 +1299,10 @@ export default function App() {
                             : daily.active &&
                                 (selected === "ise"
                                   ? !daily.instrument.iseTop
-                                  : !daily.instrument.mainLid ||
-                                    !daily.instrument.analyzerMaintenance)
+                                  : !daily.instrument.mainLid)
                               ? selected === "ise"
                                 ? "請開啟 ISE 黑色上蓋並等待 ISE 停止。"
-                                : "請開啟主蓋並勾選 Analyzer Maintenance。"
+                                : "請先開啟分析單元主蓋。"
                               : undefined
                         }
                         message={bottleMessage}
@@ -1406,6 +1409,7 @@ export default function App() {
                             "ise-reference",
                           ].includes(selected) && (
                             <DailyTasksPanel
+                              guidance
                               section={
                                 selected.includes("syringes")
                                   ? "syringes"
@@ -1688,7 +1692,10 @@ export default function App() {
             gate={preparationAccess}
             freeSimulation={freePreparationMode}
             view={preparationView}
-            onView={setPreparationView}
+            onView={(view) => {
+              setPreparationView(view);
+              setRequest((r) => ({ ...preparationViews[view], serial: r.serial + 1 }));
+            }}
             feedback={preparationMessage}
             onClose={() => setPreparationView(null)}
             onComputer={() => questComputer("Rack Requisition")}

@@ -21,7 +21,7 @@ import {
   type PreparationView,
 } from "./preparationModel";
 import type { PreparationState, PreparationGate } from "../shared/preparation";
-import type { Material } from "../shared/materialCatalog";
+import { materialById, type Material } from "../shared/materialCatalog";
 import type { TroubleState } from "../shared/troubleshooting";
 import { createTroubleshootingModel } from "./troubleshootingModel";
 export interface PreparationVisual {
@@ -213,9 +213,9 @@ export default function Viewer(props: Props) {
     };
     outline.visibleEdgeColor.set("#6bd8ec");
     outline.hiddenEdgeColor.set("#315368");
-    outline.edgeStrength = 3;
-    outline.edgeGlow = 0;
-    outline.edgeThickness = 1;
+    outline.edgeStrength = 5;
+    outline.edgeGlow = 1;
+    outline.edgeThickness = 2;
     composer.addPass(outline);
     composer.addPass(new OutputPass());
     let drawUntil = performance.now() + 2400;
@@ -302,13 +302,13 @@ export default function Viewer(props: Props) {
         invalidate();
       },
       preparation: (p) => {
-        const next = p?.view || "instrument";
+        const next = p ? `preparation-${p.view}` : "instrument";
         if (next !== sceneMode) {
           cameraMemory.set(sceneMode, {
             eye: camera.position.clone(),
             target: controls.target.clone(),
           });
-          const saved = cameraMemory.get(next);
+          const saved = !p ? cameraMemory.get(next) : undefined;
           const preset = p ? preparationViews[p.view] : current.current.request;
           const dest = saved
             ? {
@@ -463,7 +463,11 @@ export default function Viewer(props: Props) {
         const picked = dragging
           ? null
           : troubleModel.hit(ray) || bench?.hit(ray);
-        setHover(picked?.replace(/^(source|cup|rack|slot):/, "") || null);
+        const cup = picked?.startsWith("cup:")
+          ? current.current.preparation.state.cups.find((c) => `cup:${c.id}` === picked) : null;
+        setHover(cup
+          ? `杯 ${cup.id.slice(4)} · ${cup.materialId ? materialById[cup.materialId]?.name || cup.materialId : "空杯"}`
+          : picked?.replace(/^(source|cup|rack|slot):/, "") || null);
         renderer.domElement.style.cursor = dragging
           ? "grabbing"
           : picked
@@ -541,6 +545,9 @@ export default function Viewer(props: Props) {
     const tick = () => {
       frame = requestAnimationFrame(tick);
       const now = performance.now();
+      const preparationMoving = !!current.current.preparation && !!bench?.animate(now);
+      if (preparationMoving && selectionBox.visible) selectionBox.update();
+      el.dataset.preparationMotion = String(preparationMoving);
       const caseMoving = troubleModel.animate(now);
       if (caseMoving)
         el.dataset.troubleMotionProgress = String(
@@ -582,7 +589,7 @@ export default function Viewer(props: Props) {
         (p.practice && p.daily.mode === "inspect") ||
         !!p.weekly?.diag ||
         !!(p.weekly?.batch && Date.now() - p.weekly.batch < 2600);
-      if (!first && !animating && !moving && !caseMoving && now > drawUntil)
+      if (!first && !animating && !moving && !caseMoving && !preparationMoving && now > drawUntil)
         return;
       if (!first && now - lastDraw < 1000 / 30) return;
       lastDraw = now;
@@ -693,6 +700,7 @@ export default function Viewer(props: Props) {
         .toArray()
         .map((n) => n.toFixed(4))
         .join(",");
+      renderer.domElement.dataset.target = controls.target.toArray().map((n) => n.toFixed(4)).join(",");
       (current.current.guidanceTargets || []).forEach((id, i) => {
         const marker = guideHost.current?.children[i] as
           HTMLElement | undefined;
@@ -824,6 +832,7 @@ export default function Viewer(props: Props) {
       data-camera-request={props.request.serial}
       data-selected={props.selected}
       data-preparation={!!props.preparation}
+      data-preparation-view={props.preparation?.view || ""}
       data-internal={props.internal}
       data-ise-top={props.doorState["ise-top"]}
       data-ise-module={props.iseState.open}
@@ -943,7 +952,7 @@ export default function Viewer(props: Props) {
       {hover && !error && (
         <div className="hover-part">
           {hover}
-          <span>點選探索</span>
+          <span>{props.preparation ? "點選查看狀態" : "點選探索"}</span>
         </div>
       )}
       {error && (

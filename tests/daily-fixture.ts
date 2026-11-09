@@ -11,11 +11,12 @@ import {
 export async function prepareDailyTasks(page: Page, ws: Locator) {
   await closeProgram(ws);
   const b = (name: string) => ws.getByRole("button", { name, exact: true });
-  await b("日保養").click();
-  await ws.getByRole("button", { name: /^9\. 補充/ }).click();
+  await b("退出螢幕 ×").click();
+  const log = page.getByRole("region", { name: "練習任務紀錄" });
+  await log.getByRole("button", { name: /補充 CLN-1/ }).click();
+  await log.getByRole("button", { name: "操作電腦", exact: true }).click();
   for (const label of [
     "主蓋開啟",
-    "Analyzer Maintenance",
     "ISE 上蓋開啟",
     "ISE Maintenance",
   ])
@@ -38,5 +39,5 @@ export async function prepareDailyTasks(page: Page, ws: Locator) {
   for (const id of ["standard", "buffer"] as const)
     await b(`更換 ${iseReagentNames[id]}`).click();
   await instrument(ws, "ISE Maintenance", false);
-  await b("日保養").click();
+  await b("Home 主選單").click();
 }

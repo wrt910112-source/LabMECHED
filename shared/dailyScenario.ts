@@ -128,18 +128,19 @@ export const canRunIseProgram = (
   !s.iseModule &&
   (program === "prime" ? s.iseMaintenance : !s.iseMaintenance);
 
-/** Bottle access differs from program access; v5 does not require ISE Maintenance. */
+/** Daily supplies need an open cover; legacy and weekly callers opt into mode interlocks. */
 export function canHandleBottle(
   s: InstrumentState,
   module: string,
   busy = false,
   iseMaintenanceRequired = false,
+  analyzerMaintenanceRequired = false,
 ) {
   return (
     !busy &&
     (module === "ise"
       ? s.iseTop && (!iseMaintenanceRequired || s.iseMaintenance)
-      : s.mainLid && s.analyzerMaintenance)
+      : s.mainLid && (!analyzerMaintenanceRequired || s.analyzerMaintenance))
   );
 }
 export const validProbeDiag = (c: { unit: boolean; count: number }) =>

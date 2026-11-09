@@ -57,7 +57,7 @@ test("unified software restores workspace and ISE drain stays independent of six
   await closeProgram(ws);
   await b("退出螢幕 ×").click();
   const log = page.getByRole("region", { name: "練習任務紀錄" });
-  await expect(log).toContainText("1／9");
+  await expect(log).toContainText("1／10");
   await expect(log).toContainText("0／6");
   await page.getByRole("button", { name: "部件目錄", exact: true }).click();
   await page.locator(".directory-targets summary").click();

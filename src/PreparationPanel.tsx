@@ -45,7 +45,7 @@ export default function PreparationPanel({
   onComputer: () => void;
 }) {
   const [phase, setPhase] = useState(0),
-    [cupId, setCupId] = useState("cup-1"),
+    [cupId, setCupId] = useState(state.selectedCup || "cup-1"),
     [rack, setRack] = useState<MaterialKind>("RB"),
     [slot, setSlot] = useState(1);
   const [filter, setFilter] = useState("全部"),
@@ -59,6 +59,9 @@ export default function PreparationPanel({
   const currentMaterial = state.source ? materialById[state.source] : null,
     cup = state.cups.find((c) => c.id === cupId)!;
   const progress = preparationProgress(state, gate);
+  useEffect(() => {
+    if (state.selectedCup) setCupId(state.selectedCup);
+  }, [state.selectedCup]);
   useEffect(() => {
     const [kind, id, n] = state.selection?.split(":") || [];
     if (kind === "source") setPhase(0);
@@ -172,8 +175,68 @@ export default function PreparationPanel({
         >
           查看進樣區
         </button>
+        <button
+          aria-pressed={view === "instrument"}
+          onClick={() => onView("instrument")}
+        >
+          查看儀器
+        </button>
         <button onClick={onClose}>返回儀器</button>
       </nav>
+      {view === "loading" && <p className="prep-loading-route hud-card">左側進架 → 儀器內運送 → 右側出架</p>}
+      {!exam && !freeSimulation && (
+        <details className="prep-requirements hud-card" open>
+          <summary>任務準備清單</summary>
+          <p>
+            本次合計：<strong>3 架／16 杯</strong>
+          </p>
+          <div className="prep-rack-requirements">
+            {rackKinds.map((kind) => {
+              const items = preparationRequirements.filter(
+                (r) => r.rack === kind,
+              );
+              return (
+                <button
+                  key={kind}
+                  aria-pressed={rack === kind}
+                  data-rack={kind}
+                  onClick={() => {
+                    setRack(kind);
+                    setPhase(2);
+                    void run({ action: "select", target: `rack:${kind}` });
+                  }}
+                >
+                  <span>{rackNames[kind]} × 1</span>
+                  <b>杯 × {items.length}</b>
+                </button>
+              );
+            })}
+          </div>
+          <p>{rackNames[rack]}本次需要：</p>
+          <ul aria-label="所選檢體架需求">
+            {preparationRequirements
+              .filter((r) => r.rack === rack)
+              .map((r) => {
+                const item = progress.items.find((x) => x.id === r.id);
+                return (
+                  <li key={r.id}>
+                    {r.label}
+                    <small>
+                      {item?.loaded
+                        ? "已推入"
+                        : item?.racked
+                          ? "已裝架"
+                          : item?.dispensed
+                            ? "已分裝"
+                            : "待準備"}
+                    </small>
+                  </li>
+                );
+              })}
+          </ul>
+          <button onClick={() => onView("bench")}>在工作台顯示位置</button>
+        </details>
+      )}
       <aside
         className="prep-rail"
         onPointerDown={(e) => e.stopPropagation()}
@@ -241,6 +304,17 @@ export default function PreparationPanel({
           <h3>
             操作中 <small>{busy ? "保存中…" : "E · 目前操作"}</small>
           </h3>
+          <p className="prep-cup-status" role="status" aria-live="polite">
+            目前選取：杯 {state.cups.findIndex((c) => c.id === cupId) + 1}
+            <br />
+            {cup.materialId ? materialById[cup.materialId].name : "空杯"}
+            {cup.materialId && ` · ${cupFilled(cup) ? "已完成分裝" : "分裝中"}`}
+            <br />
+            {cup.rack
+              ? `${rackNames[cup.rack]} · 孔位 ${cup.slot} · ${{ bench: "工作台", entry: "左側進樣區", loaded: "已推入儀器，右側出架" }[state.racks[cup.rack].location]}`
+              : "位置：備料工作台"}
+            <small>可隨時點選 3D 杯子查看狀態。</small>
+          </p>
           <p>
             已選來源：{currentMaterial?.name || "尚未選取"}
             <br />
@@ -320,7 +394,13 @@ export default function PreparationPanel({
                   aria-label="備料檢體架"
                   value={rack}
                   disabled={busy}
-                  onChange={(e) => setRack(e.target.value as MaterialKind)}
+                  onChange={(e) => {
+                    setRack(e.target.value as MaterialKind);
+                    void run({
+                      action: "select",
+                      target: `rack:${e.target.value}`,
+                    });
+                  }}
                 >
                   {rackKinds.map((k) => (
                     <option key={k} value={k}>
@@ -352,7 +432,7 @@ export default function PreparationPanel({
               <p>
                 {rackNames[rack]}：
                 {
-                  { bench: "工作台", entry: "進樣區", loaded: "已推入" }[
+                  { bench: "工作台", entry: "左側進樣區", loaded: "已推入，右側出架" }[
                     state.racks[rack].location
                   ]
                 }

@@ -40,9 +40,9 @@ test("free exploration opens preparation immediately and retains the material ca
   await preparationShot(page, "source", info.project.name);
   await panel.getByTestId("prep-source-ita-3").click();
   await expect(panel.locator(".prep-material")).toContainText("QC3");
-  await expect(panel.locator(".prep-material")).toContainText("待確認");
+  await expect(panel.locator(".prep-material")).toContainText("ITA-3");
   await panel.getByTestId("prep-source-crp-b").click();
-  await expect(panel.locator(".prep-material")).toContainText("代碼待確認");
+  await expect(panel.locator(".prep-material")).toContainText("CRPH-2");
   await panel.getByRole("button", { name: "返回儀器", exact: true }).click();
   await expect(panel).toHaveCount(0);
   expect(errors).toEqual([]);

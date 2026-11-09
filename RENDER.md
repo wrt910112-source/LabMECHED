@@ -25,3 +25,15 @@ AU5800_COOKIE_SECURE=true
 啟動日誌應包含 `AU5800 database: /var/data/au5800.sqlite`。可在服務的 Shell 執行 `npm run db:backup`，一致性備份會存入 `/var/data/backups`（依實際資料庫目錄而定）。請在服務執行期間操作磁碟，Build Command 與 Pre-deploy Command 無法存取 persistent disk。
 
 將程式變更推送到 Render 連接的 Git 分支，再執行 Deploy latest commit。啟動日誌應顯示 `AU5800 server listening on http://0.0.0.0:10000`（連接埠依 PORT 而定）。部署後確認首頁及 `/api/auth/status` 能正常回應。
+
+## 首次建立管理員
+
+新的磁碟資料庫不含本機帳號。若登入頁顯示尚無管理員，請在同一個 Web Service 的 Render Shell 執行：
+
+```sh
+AU5800_DB=/var/data/au5800.sqlite npm run account:bootstrap
+```
+
+依提示輸入兩次管理員初始密碼，輸入時不會顯示字元。預設帳號為 `000029220`（若設定 `AU5800_BOOTSTRAP_USERNAME` 則使用該值），首次登入須更換密碼。若已有設定 `AU5800_BOOTSTRAP_PASSWORD`，指令會使用該值而不再詢問密碼。
+
+這個指令必須在已掛載磁碟的服務 Shell 執行，在本機執行只會初始化本機資料庫。已有管理員時指令會拒絕執行，不會覆寫帳密。若要保留原有帳號與紀錄，請遷移原資料庫，而非初始化新的管理員。
