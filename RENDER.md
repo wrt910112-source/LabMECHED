@@ -20,7 +20,7 @@ AU5800_COOKIE_SECURE=true
 
 若 Mount Path 不同，請把 `/var/data` 換成實際路徑。SQLite 檔案及其 WAL、SHM 檔需放在 persistent disk 內；程式會自動建立資料庫目錄。既有資料庫若位於其他位置，不會自動搬移，請先備份再遷移。
 
-只新增磁碟不會自動切換資料庫路徑，必須同時設定上述環境變數並重新部署。在 Render 上，若 `AU5800_DB` 未設定或不是絕對路徑，正式伺服器會停止啟動並提示設定，避免默默使用暫存目錄。程式無法單靠路徑判斷磁碟是否真的掛載，請在 Disks 確認 Mount Path 與設定一致。
+本專案已依目前的 Mount Path `/var/data` 設定 Render 預設值：未設定 `AU5800_DB` 時，伺服器、管理員初始化與備份指令都會使用 `/var/data/au5800.sqlite`。本機仍預設使用專案內的 `data/au5800.sqlite`。若有明確設定 `AU5800_DB`，則以該設定為準；Render 上仍拒絕相對路徑。程式無法單靠路徑判斷磁碟是否真的掛載，請在 Disks 確認 Mount Path 與設定一致。
 
 啟動日誌應包含 `AU5800 database: /var/data/au5800.sqlite`。可在服務的 Shell 執行 `npm run db:backup`，一致性備份會存入 `/var/data/backups`（依實際資料庫目錄而定）。請在服務執行期間操作磁碟，Build Command 與 Pre-deploy Command 無法存取 persistent disk。
 

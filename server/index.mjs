@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { mkdirSync, existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, resolve, extname, sep, isAbsolute } from "node:path";
+import { dirname, resolve, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   initialEngine,
@@ -16,6 +16,7 @@ import {
 } from "../shared/exam.ts";
 
 import { migrateDatabase } from "./database.mjs";
+import { databasePath } from "./config.mjs";
 import {
   createAccountService,
   verifyPassword,
@@ -45,7 +46,7 @@ async function bodyOf(req) {
 }
 
 export function createApplication({
-  dbPath = process.env.AU5800_DB || resolve(root, "data/au5800.sqlite"),
+  dbPath = databasePath(),
   staticRoot = resolve(root, "dist"),
 } = {}) {
   if (dbPath !== ":memory:")
@@ -630,17 +631,9 @@ if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  if (
-    process.env.RENDER === "true" &&
-    (!process.env.AU5800_DB || !isAbsolute(process.env.AU5800_DB))
-  ) {
-    throw new Error(
-      "On Render, set AU5800_DB to an absolute path inside your persistent disk mount, for example /var/data/au5800.sqlite.",
-    );
-  }
   const app = createApplication(),
     port = Number(process.env.PORT || process.env.AU5800_PORT || 3001);
-  console.log(`AU5800 database: ${resolve(process.env.AU5800_DB || resolve(root, "data/au5800.sqlite"))}`);
+  console.log(`AU5800 database: ${databasePath()}`);
   app.server.listen(port, "0.0.0.0", () =>
     console.log(`AU5800 server listening on http://0.0.0.0:${port}`),
   );

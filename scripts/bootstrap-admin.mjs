@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
-import { resolve, dirname } from "node:path";
+import { dirname } from "node:path";
+import { databasePath } from "../server/config.mjs";
 import { mkdirSync } from "node:fs";
 import { migrateDatabase } from "../server/database.mjs";
 import { bootstrapAdministrator } from "../server/accounts.mjs";
@@ -42,7 +43,7 @@ function secret(prompt) {
 }
 let db;
 try {
-  const path = resolve(process.env.AU5800_DB || "data/au5800.sqlite");
+  const path = databasePath();
   mkdirSync(dirname(path), { recursive: true });
   db = new DatabaseSync(path);
   const migration = migrateDatabase(db, path);
