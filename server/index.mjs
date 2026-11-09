@@ -631,9 +631,9 @@ if (
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const app = createApplication(),
-    port = Number(process.env.AU5800_PORT || 3001);
-  app.server.listen(port, "127.0.0.1", () =>
-    console.log(`AU5800 本地服務：http://127.0.0.1:${port}`),
+    port = Number(process.env.PORT || process.env.AU5800_PORT || 3001);
+  app.server.listen(port, "0.0.0.0", () =>
+    console.log(`AU5800 server listening on http://0.0.0.0:${port}`),
   );
   const shutdown = () => app.close().then(() => process.exit(0));
   process.on("SIGINT", shutdown);
