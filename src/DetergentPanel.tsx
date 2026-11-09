@@ -8,6 +8,7 @@ import {
   Info,
 } from "lucide-react";
 import { useState } from "react";
+import { useGuidance } from "./GuidanceContext";
 import {
   washBanks,
   washSlots,
@@ -36,6 +37,7 @@ interface Props {
   onBack: () => void;
 }
 export default function DetergentPanel(p: Props) {
+  const guidance = useGuidance();
   const [all, setAll] = useState(false),
     [chosenFluid, setChosenFluid] = useState<Fluid | null>(null);
   const slot = p.selectedSlot ? slotById[p.selectedSlot] : null,
@@ -86,17 +88,19 @@ export default function DetergentPanel(p: Props) {
           </button>
         ))}
       </div>
-      <p className="mode-note">
-        {p.module === "ise"
-          ? "平日 DET-1、DET-2 常駐；周保養將 DET-1 換為 W2，DET-2 保留。"
-          : sample
-            ? "平日：2 瓶 DET-1＋2 瓶 DET-2。周／雙周保養先取出同側 DET-2，再於 61／63 換入 W2；62／64 留空。"
-            : p.mode === "daily"
-              ? "平日：4 瓶 CLN-1＋2 瓶 Diluent。"
-              : "保養配置：W2 可放入專用槽或 R1 共用槽。"}
-        <br />
-        {sample ? "左右依儀器後方視角標示。" : "CLN-2 目前未使用。"}
-      </p>
+      {guidance && (
+        <p className="mode-note">
+          {p.module === "ise"
+            ? "平日 DET-1、DET-2 常駐；周保養將 DET-1 換為 W2，DET-2 保留。"
+            : sample
+              ? "平日：2 瓶 DET-1＋2 瓶 DET-2。周／雙周保養先取出同側 DET-2，再於 61／63 換入 W2；62／64 留空。"
+              : p.mode === "daily"
+                ? "平日：4 瓶 CLN-1＋2 瓶 Diluent。"
+                : "保養配置：W2 可放入專用槽或 R1 共用槽。"}
+          <br />
+          {sample ? "左右依儀器後方視角標示。" : "CLN-2 目前未使用。"}
+        </p>
+      )}
       {slot && bottle ? (
         <section
           className="bottle-controls"
@@ -136,7 +140,7 @@ export default function DetergentPanel(p: Props) {
                   </div>
                 </div>
               )}
-              {wrongMode && (
+              {guidance && wrongMode && (
                 <p className="slot-notice">
                   平日不使用 W2，請
                   {slot.role === "shared"
@@ -147,7 +151,7 @@ export default function DetergentPanel(p: Props) {
                   。
                 </p>
               )}
-              {allowed.length === 0 && !bottle.fluid && (
+              {guidance && allowed.length === 0 && !bottle.fluid && (
                 <p className="slot-notice">
                   此 W2 槽平日留空；請切換周／雙周保養配置後放瓶。
                 </p>
@@ -171,7 +175,8 @@ export default function DetergentPanel(p: Props) {
               )}
               <div className="bottle-actions">
                 <button
-                  disabled={p.busy || !!p.disabledReason || !fluid} title={p.disabledReason}
+                  disabled={p.busy || !!p.disabledReason || !fluid}
+                  title={guidance ? p.disabledReason : undefined}
                   onClick={() => p.onAction({ kind: "replace", fluid })}
                 >
                   <Replace size={14} />
@@ -179,7 +184,11 @@ export default function DetergentPanel(p: Props) {
                 </button>
                 <button
                   disabled={
-                    p.busy || !!p.disabledReason || !bottle.fluid || wrongMode || bottle.level >= 1
+                    p.busy ||
+                    !!p.disabledReason ||
+                    !bottle.fluid ||
+                    wrongMode ||
+                    bottle.level >= 1
                   }
                   onClick={() => p.onAction({ kind: "refill" })}
                 >
@@ -187,7 +196,8 @@ export default function DetergentPanel(p: Props) {
                   補充
                 </button>
                 <button
-                  disabled={p.busy || !!p.disabledReason || !bottle.fluid} title={p.disabledReason}
+                  disabled={p.busy || !!p.disabledReason || !bottle.fluid}
+                  title={guidance ? p.disabledReason : undefined}
                   onClick={() => p.onAction({ kind: "remove" })}
                 >
                   <ArrowUpFromLine size={14} />
@@ -198,12 +208,16 @@ export default function DetergentPanel(p: Props) {
           )}
         </section>
       ) : (
-        <p className="slot-notice">點選 3D 瓶子或下方槽位開始操作。</p>
+        guidance && (
+          <p className="slot-notice">點選 3D 瓶子或下方槽位開始操作。</p>
+        )
       )}
       <p role="status" className="bottle-message">
         {p.busy
           ? "瓶子操作中…"
-          : p.disabledReason || p.message || "可點選瓶子或空槽，選擇更換、補充或取出。"}
+          : p.message ||
+            (guidance &&
+              (p.disabledReason || "可點選瓶子或空槽，選擇更換、補充或取出。"))}
       </p>
       <div className="wash-grid-title">
         <span>
@@ -277,10 +291,12 @@ export default function DetergentPanel(p: Props) {
           示意液量供遊戲操作，不代表實際容量或保養用量。配置切換不會自動換瓶。
         </p>
       </div>
-      <button className="reset-bottles" onClick={p.onReset} disabled={p.busy}>
-        <RotateCcw size={13} />
-        重設為平日 {sample ? 4 : 6} 瓶配置
-      </button>
+      {guidance && (
+        <button className="reset-bottles" onClick={p.onReset} disabled={p.busy}>
+          <RotateCcw size={13} />
+          重設為平日 {sample ? 4 : 6} 瓶配置
+        </button>
+      )}
     </div>
   );
 }

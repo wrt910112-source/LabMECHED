@@ -2,15 +2,21 @@ import { practiceAccount } from "./practice-account";
 import { expect, type Page, type Locator } from "@playwright/test";
 /** Follow the HUD navigation; selection itself intentionally never moves the camera. */
 export async function selectPart(page: Page, id: string, bottles = false) {
-  const directory = page.getByRole("button", { name: "部件目錄", exact: true });
+  const scope = (await page.locator(".shared-exam-room").count())
+    ? page.locator(".shared-exam-room")
+    : page;
+  const directory = scope.getByRole("button", {
+    name: "部件目錄",
+    exact: true,
+  });
   if ((await directory.getAttribute("aria-expanded")) !== "true")
     await directory.click();
-  await page.getByTestId(`part-${id}`).click();
+  await scope.getByTestId(`part-${id}`).click();
   if (id === "console") return;
-  await page.getByRole("button", { name: "操作", exact: true }).click();
-  await page.getByRole("button", { name: /聚焦部件/ }).click();
+  await scope.getByRole("button", { name: "操作", exact: true }).click();
+  await scope.getByRole("button", { name: /聚焦部件/ }).click();
   if (bottles && ["r1", "r2", "sample"].includes(id)) {
-    await page.getByRole("button", { name: /操作洗滌劑瓶/ }).click();
+    await scope.getByRole("button", { name: /操作洗滌劑瓶/ }).click();
     await page
       .getByTestId(
         `slot-${id === "sample" ? "sample-left-1" : id === "r1" ? "r1-inner-1" : "r2-outer-1"}`,
@@ -30,18 +36,21 @@ export async function startDaily(page: Page) {
     .click();
 }
 export async function selectTarget(page: Page, id: string) {
-  await page.getByRole("button", { name: "部件目錄", exact: true }).click();
-  const targets = page.locator(".directory-targets");
+  const scope = (await page.locator(".shared-exam-room").count())
+    ? page.locator(".shared-exam-room")
+    : page;
+  await scope.getByRole("button", { name: "部件目錄", exact: true }).click();
+  const targets = scope.locator(".directory-targets");
   if (
     !(await targets.getAttribute("open")) &&
-    !(await page.getByTestId(`target-${id}`).isVisible())
+    !(await scope.getByTestId(`target-${id}`).isVisible())
   )
     await targets.locator("summary").click();
-  await page.getByTestId(`target-${id}`).click();
-  await page.getByRole("button", { name: /聚焦部件/ }).click();
+  await scope.getByTestId(`target-${id}`).click();
+  await scope.getByRole("button", { name: /聚焦部件/ }).click();
   await expect(page.locator(".viewer-host")).toHaveAttribute(
     "data-selected",
-    /r1|r2|sample|mixing|ise-cups/,
+    /r1|r2|sample|mixing|ise/,
   );
 }
 

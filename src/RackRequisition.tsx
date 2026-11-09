@@ -320,6 +320,7 @@ export default function RackRequisition({
                             key={id}
                             id={id}
                             editing={editing && !locked}
+                            guidance={!exam}
                             rb={current.rb.includes(id)}
                             cal={current.cal.includes(id)}
                             select={select}
@@ -542,7 +543,9 @@ function CalCells({
   select,
   expiredRb = false,
   expiredCal = false,
+  guidance = true,
 }: {
+  guidance?: boolean;
   id: string;
   editing: boolean;
   rb: boolean;
@@ -560,8 +563,8 @@ function CalCells({
           aria-label={`${id} RB`}
           aria-pressed={rb}
           disabled={!editing}
-          className={`${rb ? "rb-selected" : ""} ${editing && expiredRb && !rb ? "rack-required" : ""}`}
-          title={expiredRb ? "本次需登記 RB" : undefined}
+          className={`${rb ? "rb-selected" : ""} ${guidance && editing && expiredRb && !rb ? "rack-required" : ""}`}
+          title={guidance && expiredRb ? "本次需登記 RB" : undefined}
           onClick={() => select(id, "rb")}
         >
           {rb ? "✓" : ""}
@@ -573,8 +576,8 @@ function CalCells({
           aria-label={`${id} Cal.`}
           aria-pressed={cal}
           disabled={!editing}
-          className={`${cal ? "cal-selected" : ""} ${editing && expiredCal && !cal ? "rack-required" : ""}`}
-          title={expiredCal ? "本次需登記 Calibration" : undefined}
+          className={`${cal ? "cal-selected" : ""} ${guidance && editing && expiredCal && !cal ? "rack-required" : ""}`}
+          title={guidance && expiredCal ? "本次需登記 Calibration" : undefined}
           onClick={() => select(id, "cal")}
         >
           {cal ? "✓" : ""}

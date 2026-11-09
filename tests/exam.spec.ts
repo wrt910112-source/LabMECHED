@@ -1,9 +1,17 @@
-import { createApplication } from "../server/index.mjs";
+﻿import { createApplication } from "../server/index.mjs";
 import { seedAccount } from "../server/account-fixture.mjs";
 import { isTaskOpen } from "../shared/availability";
 import { fillPreparationUI, preparationShot } from "./preparation-ui";
 import { currentDailyVersion } from "../shared/dailyScenario";
-import { instrument, closeProgram, cups, iseDrain, replaceAll } from "./ui";
+import {
+  instrument,
+  closeProgram,
+  cups,
+  iseDrain,
+  replaceAll,
+  selectPart,
+  selectTarget,
+} from "./ui";
 import {
   supplyIds,
   supplyLabel,
@@ -87,7 +95,20 @@ async function clickSaved(page: Page, action: () => Promise<unknown>) {
   await action();
   const saved = await response;
   expect(saved.status()).toBe(200);
-  await expect(page.locator(".exam-room .exam-primary").first()).toBeEnabled();
+  if (await page.locator(".shared-exam-room").count())
+    await expect(
+      page
+        .locator(
+          ".shared-exam-room .ws-session-hud, .shared-exam-room > .simulator-shell > .topbar",
+        )
+        .getByRole("button", { name: "完成", exact: true })
+        .filter({ visible: true })
+        .last(),
+    ).toBeEnabled();
+  else
+    await expect(
+      page.locator(".exam-room .exam-primary").first(),
+    ).toBeEnabled();
   return await saved.json();
 }
 async function login(page: Page, username: string, password = "Testing123!") {
@@ -148,7 +169,7 @@ test("learner login, empty submission and saved history remain available without
     .click();
   await page.getByRole("button", { name: "完成", exact: true }).click();
   await page.getByRole("button", { name: "確認交卷", exact: true }).click();
-  await expect(page.locator(".exam-stats")).toContainText("0 / 100");
+  await expect(page.locator(".exam-stats")).toContainText("0.8 / 100");
   await page.reload();
   await page.getByRole("button", { name: "登入／考試", exact: true }).click();
   await page.getByRole("button", { name: "我的歷程", exact: true }).click();
@@ -174,31 +195,46 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
   await page.getByRole("button", { name: "返回歷程", exact: true }).click();
   await page.getByRole("button", { name: "任務選單", exact: true }).click();
   await startDaily();
-  await page.getByRole("button", { name: "工作站", exact: true }).click();
-  const ws = page.locator(".exam-workstation"),
-    panel = page.locator(".exam-model-panel");
+  await page
+    .getByRole("region", { name: "考試任務紀錄" })
+    .getByRole("button", { name: "操作電腦", exact: true })
+    .click();
+  const ws = page.locator(".shared-exam-room .workstation");
+  const button = (name: string) =>
+    ws.getByRole("button", { name, exact: true });
   const home = async (name: string) => {
-    await ws.getByRole("button", { name: "Home 主選單", exact: true }).click();
-    await ws.getByRole("button", { name, exact: true }).click();
+    if (name === "日保養補充與檢查") {
+      await ws.getByRole("button", { name: "退出螢幕 ×", exact: true }).click();
+      const log = page.getByRole("region", { name: "考試任務紀錄" });
+      await log.getByRole("button", { name: /補充 CLN-1/ }).click();
+      await log.getByRole("button", { name: "操作電腦", exact: true }).click();
+      return;
+    }
+    await closeProgram(ws);
+    await button("Home 主選單").click();
+    await button(name).click();
   };
+  const savedButton = (name: string) =>
+    clickSaved(page, () => button(name).click());
+  await home("Analyzer Status");
+  await ws.getByLabel("Bath Temp. 登記").fill("37.0");
+  await ws.getByLabel("Coolant Temp. 登記").fill("8.2");
+  await savedButton("儲存溫度紀錄");
+  await home("Start Condition");
+  await savedButton("Edit");
+  await savedButton("New Index");
+  await expect(ws).not.toContainText("按 Edit 後選 New Index");
   await home("日保養補充與檢查");
+  for (const label of ["主蓋開啟", "ISE 上蓋開啟", "ISE Maintenance"])
+    await clickSaved(page, () => instrument(ws, label));
+  for (const id of supplyIds) await savedButton(`補充 ${supplyLabel(id)}`);
   for (const label of [
-    "主蓋開啟",
-    "Analyzer Maintenance",
-    "ISE 上蓋開啟",
-    "ISE Maintenance",
     "前方 syringe 櫃門",
     "後方 syringe 櫃門",
     "Standard／Buffer 罩",
     "Reference 櫃門",
   ])
     await clickSaved(page, () => instrument(ws, label));
-  for (const id of supplyIds)
-    await clickSaved(page, () =>
-      ws
-        .getByRole("button", { name: `補充 ${supplyLabel(id)}`, exact: true })
-        .click(),
-    );
   for (const id of dailySyringes)
     for (const finding of ["水氣", "漏水"])
       await clickSaved(page, () =>
@@ -207,65 +243,39 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
           .selectOption("正常"),
       );
   for (const id of iseReagentIds)
-    await clickSaved(page, () =>
-      ws
-        .getByRole("button", {
-          name: `檢查 ${iseReagentNames[id]}`,
-          exact: true,
-        })
-        .click(),
-    );
+    await savedButton(`檢查 ${iseReagentNames[id]}`);
   for (const id of ["standard", "buffer"] as const)
-    await clickSaved(page, () =>
-      ws
-        .getByRole("button", {
-          name: `更換 ${iseReagentNames[id]}`,
-          exact: true,
-        })
-        .click(),
-    );
+    await savedButton(`更換 ${iseReagentNames[id]}`);
   await clickSaved(page, () => instrument(ws, "ISE Maintenance", false));
-  for (const label of ["主蓋開啟", "Analyzer Maintenance", "ISE 上蓋開啟"])
-    await clickSaved(page, () => instrument(ws, label, false));
-  await home("Analyzer Status");
-  await ws.getByLabel("Bath Temp. 登記", { exact: true }).fill("37.0");
-  await ws.getByLabel("Coolant Temp. 登記", { exact: true }).fill("8.2");
-  await clickSaved(page, () =>
-    ws.getByRole("button", { name: "儲存溫度紀錄", exact: true }).click(),
-  );
-  await home("Start Condition");
-  await clickSaved(page, () =>
-    ws.getByRole("button", { name: "Edit", exact: true }).click(),
-  );
-  await clickSaved(page, () =>
-    ws.getByRole("button", { name: "New Index", exact: true }).click(),
-  );
-  await home("Analyzer Maintenance");
-  await clickSaved(page, () => instrument(ws, "主蓋開啟", true));
-  await clickSaved(page, () =>
-    ws.getByRole("button", { name: "Cleaning Probe", exact: true }).click(),
-  );
-  await page
-    .locator(".exam-workstation .ws-toolbar")
-    .getByRole("button", { name: "到模型操作", exact: true })
-    .click();
-  await panel.getByRole("button", { name: "探針", exact: true }).click();
-  for (const id of dailyProbes) {
-    await panel.getByRole("button", { name: id, exact: true }).click();
-    await clickSaved(page, () =>
-      panel
-        .getByRole("button", { name: "酒精棉擦拭 tip", exact: true })
-        .click(),
-    );
-  }
-  await page.getByRole("button", { name: "工作站", exact: true }).click();
   await home("Analyzer Maintenance");
   await clickSaved(page, () => instrument(ws, "Analyzer Maintenance", true));
+  await savedButton("Cleaning Probe");
+  for (const id of dailyProbes.slice(0, -1))
+    await clickSaved(page, () => button(`酒精棉擦拭 ${id}`).click());
+  await ws
+    .locator(".ws-toolbar")
+    .getByRole("button", { name: "到模型操作", exact: true })
+    .click();
+  const model = page.locator(".shared-exam-room .model-practice");
+  await expect(model).toBeVisible();
+  const lastProbe = dailyProbes.at(-1)!;
+  await selectTarget(page, lastProbe);
   await clickSaved(page, () =>
-    ws
-      .getByRole("button", { name: "Inspect Probe & Mixing Bar", exact: true })
+    model
+      .getByRole("button", { name: `用酒精棉擦拭 ${lastProbe}`, exact: true })
       .click(),
   );
+  await expect(
+    page.locator(
+      ".shared-exam-room .guidance-markers span, .shared-exam-room .hud-control-target",
+    ),
+  ).toHaveCount(0);
+  await page
+    .getByRole("region", { name: "考試任務紀錄" })
+    .getByRole("button", { name: "操作電腦", exact: true })
+    .click();
+  await home("Analyzer Maintenance");
+  await savedButton("Inspect Probe & Mixing Bar");
   for (const id of dailyProbes)
     await clickSaved(page, () =>
       ws.getByLabel(`${id} 排水`, { exact: true }).selectOption("正常"),
@@ -274,138 +284,56 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
     await clickSaved(page, () =>
       ws.getByLabel(`${id} mixing bars`, { exact: true }).selectOption("正常"),
     );
-  await page
-    .locator(".exam-workstation .ws-toolbar")
-    .getByRole("button", { name: "到模型操作", exact: true })
-    .click();
-  await panel.getByRole("button", { name: "CLEAN", exact: true }).click();
-  await clickSaved(page, () =>
-    panel.getByLabel("ISE 上蓋開啟", { exact: true }).check(),
-  );
-  await page.waitForTimeout(900);
-  await page.screenshot({
-    path: `test-results/${info.project.name}-exam-ise-cups.png`,
-  });
-  await clickSaved(page, () =>
-    panel
-      .getByRole("button", {
-        name: "U-L／CLEAN 放入滿杯 Cleaning Solution",
-        exact: true,
-      })
-      .click(),
-  );
-  await clickSaved(page, () =>
-    panel.getByLabel("主蓋開啟", { exact: true }).uncheck(),
-  );
-  await page.getByRole("button", { name: "工作站", exact: true }).click();
-  await home("Analyzer Maintenance");
-  await ws
-    .getByRole("button", { name: "ISE Maintenance", exact: true })
-    .click();
-  await expect(
-    ws.getByRole("button", { name: "Total Prime", exact: true }),
-  ).toBeDisabled();
-  await clickSaved(page, () =>
-    ws.getByRole("button", { name: "Cleaning", exact: true }).click(),
-  );
+  await clickSaved(page, () => instrument(ws, "Analyzer Maintenance", false));
+  await button("ISE Maintenance").click();
+  await button("試劑杯準備").click();
+  await savedButton("在 CLEAN 放置裝滿的 Cleaning Solution");
+  await closeProgram(ws);
+  await savedButton("Cleaning");
   await clickSaved(page, () => instrument(ws, "ISE Maintenance", true));
-  await expect(
-    ws.getByRole("button", { name: "Cleaning", exact: true }),
-  ).toBeDisabled();
-  for (let i = 0; i < 3; i++)
+  for (let i = 0; i < 3; i++) await savedButton("Total Prime");
+  await button("試劑杯準備").click();
+  await savedButton("取出並丟棄 CLEAN 杯");
+  for (const id of [
+    "S-H · Serum High",
+    "S-L · Serum Low",
+    "U-H · Urine High",
+    "U-L · Urine Low",
+  ])
     await clickSaved(page, () =>
-      ws.getByRole("button", { name: "Total Prime", exact: true }).click(),
+      ws.getByLabel(`${id} 滴數`).pressSequentially("10", { delay: 1 }),
     );
-  await ws.getByRole("button", { name: "Calibration", exact: true }).click();
-  await page
-    .locator(".exam-workstation .ws-toolbar")
-    .getByRole("button", { name: "到模型操作", exact: true })
-    .click();
-  await clickSaved(page, () =>
-    panel.getByLabel("主蓋開啟", { exact: true }).check(),
-  );
-  await clickSaved(page, () =>
-    panel.getByRole("button", { name: "取出 CLEAN 杯", exact: true }).click(),
-  );
-  for (const id of ["S-H", "S-L", "U-H", "U-L"]) {
-    await panel.getByLabel(`${id} 校正液滴數`, { exact: true }).fill("10");
-    await clickSaved(page, () =>
-      panel
-        .getByRole("button", { name: `放置 ${id} 校正杯`, exact: true })
-        .click(),
-    );
-  }
-  await clickSaved(page, () =>
-    panel.getByLabel("主蓋開啟", { exact: true }).uncheck(),
-  );
-  await page.getByRole("button", { name: "工作站", exact: true }).click();
-  await home("Analyzer Maintenance");
-  await ws
-    .getByRole("button", { name: "ISE Maintenance", exact: true })
-    .click();
-  await ws.getByRole("button", { name: "Calibration", exact: true }).click();
+  await closeProgram(ws);
   await clickSaved(page, () => instrument(ws, "ISE Maintenance", false));
-  await clickSaved(page, () =>
-    ws.getByRole("button", { name: "Serum/Urine Start", exact: true }).click(),
+  const configured = await page.evaluate(
+    async () =>
+      (await (await fetch("/api/attempts/active")).json()).attempt.sim,
   );
+  expect(configured.drops).toEqual(["10", "10", "10", "10"]);
+  expect(configured.prime).toBe(3);
+  expect(configured.cup).toBe("discarded");
+  await button("Calibration").click();
+  await savedButton("Serum/Urine Start");
   await clickSaved(page, () =>
     ws.getByLabel("已檢查 Serum／Urine 數值", { exact: true }).check(),
   );
   await home("Analyzer Maintenance");
-  await ws
-    .getByRole("button", { name: "ISE Maintenance", exact: true })
-    .click();
+  await button("ISE Maintenance").click();
   await clickSaved(page, () => instrument(ws, "ISE Maintenance", true));
-  await ws
-    .getByRole("button", { name: "Replace Sample Probe", exact: true })
-    .click();
-  await clickSaved(page, () =>
-    ws
-      .getByRole("button", { name: "OK · 儲存 DIAG 設定", exact: true })
-      .click(),
-  );
-  await clickSaved(page, () =>
-    ws.getByRole("button", { name: "DIAG ise", exact: true }).click(),
-  );
+  await button("Replace Sample Probe").click();
+  await savedButton("OK · 儲存 DIAG 設定");
+  await savedButton("DIAG ise");
   await clickSaved(page, () =>
     ws.getByLabel("ISE 直線排水檢查", { exact: true }).selectOption("正常"),
   );
-  await ws.getByRole("button", { name: "關閉 DIAG 設定", exact: true }).click();
-  await clickSaved(page, () => instrument(ws, "ISE Maintenance", false));
+  await closeProgram(ws);
   await home("Reagent Management");
-  await ws.getByRole("button", { name: "Details", exact: true }).click();
-  for (const [name, side] of [
-    ["ALT", "R1"],
-    ["ALT", "R2"],
-    ["AST", "R1"],
-    ["AST", "R2"],
-    ["HDL", "R1"],
-    ["HDL", "R2"],
-    ["LDL", "R1"],
-    ["LDL", "R2"],
-    ["CRE", "R1"],
-    ["CRE", "R2"],
-    ["AMY", "R1"],
-  ]) {
-    await clickSaved(page, () =>
-      ws
-        .getByRole("button", { name: `更換試劑 ${name} ${side}`, exact: true })
-        .click(),
-    );
-  }
-  await ws.getByRole("button", { name: "Reagent Check", exact: true }).click();
-  await clickSaved(page, () =>
-    ws
-      .getByRole("button", {
-        name: "All positions",
-        exact: true,
-      })
-      .click(),
-  );
+  await button("Details").click();
+  for (const b of await ws.getByRole("button", { name: /^更換試劑 / }).all())
+    await clickSaved(page, () => b.click());
+  await button("Reagent Check").click();
+  await savedButton("All positions");
   await expect(ws.locator(".stability-expired")).toHaveCount(17);
-  await page.screenshot({
-    path: `artifacts/workstation-v5/${info.project.name}-exam-reagents-completed.png`,
-  });
   await home("Rack Requisition");
   // QC first must not save the still-unentered automatic Calibration selection.
   await ws.getByRole("button", { name: "QC", exact: true }).click();
@@ -422,11 +350,16 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
   expect(beforeCal.calibrationEntered).toBeFalsy();
   await ws.getByRole("button", { name: "Calibration", exact: true }).click();
   await ws.getByRole("button", { name: "Start Entry", exact: true }).click();
+  for (const id of ["3.ALT", "5.AST", "15.HDL", "20.LDL", "9.CRE", "4.AMY"])
+    await ws.getByRole("button", { name: `${id} RB`, exact: true }).click();
+  for (const id of ["15.HDL", "20.LDL", "9.CRE"])
+    await ws.getByRole("button", { name: `${id} Cal.`, exact: true }).click();
+  await expect(ws.locator(".rack-required")).toHaveCount(0);
   await expect(ws.getByLabel("RB count", { exact: true })).toHaveText("6");
   await expect(ws.getByLabel("Cal count", { exact: true })).toHaveText("3");
   await expect(
     ws.getByRole("button", { name: "3.ALT RB", exact: true }),
-  ).toHaveAttribute("title", "expired");
+  ).not.toHaveAttribute("title");
   await ws
     .getByRole("button", { name: "3.ALT RB", exact: true })
     .scrollIntoViewIfNeeded();
@@ -503,7 +436,7 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
   });
   await ws.getByRole("button", { name: "退出螢幕 ×", exact: true }).click();
   await page
-    .locator(".exam-room-toolbar")
+    .locator(".shared-exam-room > .simulator-shell > .topbar")
     .getByRole("button", { name: "備料工作台", exact: true })
     .click();
   await fillPreparationUI(page, true, async (i) => {
@@ -544,7 +477,7 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
     await prep.getByRole("button", { name: "吸取來源液", exact: true }).click();
     await expect(
       page
-        .locator(".exam-save-status")
+        .locator(".assessment-save-status")
         .getByRole("button", { name: "重試保存", exact: true }),
     ).toBeVisible();
     await expect(prep.locator(".prep-controls")).toContainText("移液器：空");
@@ -557,7 +490,7 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
     await page.unroute("**/api/attempts/*/events", loseResponse);
     await clickSaved(page, () =>
       page
-        .locator(".exam-save-status")
+        .locator(".assessment-save-status")
         .getByRole("button", { name: "重試保存", exact: true })
         .click(),
     );
@@ -569,7 +502,7 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
     await page.reload();
     await page.getByRole("button", { name: "登入／考試", exact: true }).click();
     await page
-      .locator(".exam-room-toolbar")
+      .locator(".shared-exam-room > .simulator-shell > .topbar")
       .getByRole("button", { name: "備料工作台", exact: true })
       .click();
     await expect(prep.locator(".prep-controls")).toContainText("LCC1");
@@ -609,9 +542,9 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
     path: `test-results/${info.project.name}-exam-daily-complete.png`,
   });
   await page.getByRole("button", { name: "返回歷程", exact: true }).click();
-  await expect(page.locator(".exam-comparisons")).toContainText("0 → 100");
+  await expect(page.locator(".exam-comparisons")).toContainText("0.8 → 100");
 });
-test("daily v4 mode buttons are disabled natively and new inspection evidence resumes after refresh", async ({
+test("daily exam mode buttons are disabled natively and new inspection evidence resumes after refresh", async ({
   page,
 }) => {
   await login(page, "student");
@@ -620,46 +553,29 @@ test("daily v4 mode buttons are disabled natively and new inspection evidence re
     .filter({ has: page.getByRole("heading", { name: "日保養", exact: true }) })
     .getByRole("button", { name: "開始測驗" })
     .click();
+  await expect(page.locator(".shared-exam-room")).toBeVisible();
+  await selectPart(page, "syringes");
   await clickSaved(page, () =>
-    page
-      .locator(".exam-model-panel")
-      .getByTestId("exam-front-syringe-toggle")
-      .click(),
+    page.getByTestId("context-syringe-front").click(),
   );
   await expect(page.locator(".exam-room .viewer-host")).toHaveAttribute(
     "data-syringe-front",
     "true",
   );
-  await expect(page.locator(".exam-room .viewer-host")).toHaveAttribute(
-    "data-internal",
-    "false",
-  );
+  await selectPart(page, "rear-syringes");
   await clickSaved(page, () =>
-    page
-      .locator(".exam-model-panel")
-      .getByTestId("exam-rear-syringe-toggle")
-      .click(),
+    page.getByTestId("context-syringe-rear").click(),
   );
   await expect(page.locator(".exam-room .viewer-host")).toHaveAttribute(
     "data-syringe-rear",
     "true",
   );
-  await expect(page.locator(".exam-room .viewer-host")).toHaveAttribute(
-    "data-syringe-front",
-    "true",
-  );
-  await clickSaved(page, () =>
-    page
-      .locator(".exam-model-panel")
-      .getByTestId("exam-rear-syringe-toggle")
-      .click(),
-  );
-  await expect(page.locator(".exam-room .viewer-host")).toHaveAttribute(
-    "data-syringe-rear",
-    "false",
-  );
-  await page.getByRole("button", { name: "工作站", exact: true }).click();
-  const ws = page.locator(".exam-workstation");
+  await page
+    .getByRole("region", { name: "考試任務紀錄" })
+    .getByRole("button", { name: "操作電腦", exact: true })
+    .click();
+  const ws = page.locator(".shared-exam-room .workstation");
+  await ws.getByRole("button", { name: "Home 主選單", exact: true }).click();
   await ws
     .getByRole("button", { name: "Analyzer Maintenance", exact: true })
     .click();
@@ -693,23 +609,26 @@ test("daily v4 mode buttons are disabled natively and new inspection evidence re
     ws.getByRole("button", { name: "Serum/Urine Start", exact: true }),
   ).toBeDisabled();
   await ws.getByRole("button", { name: "Home 主選單", exact: true }).click();
-  await ws
-    .getByRole("button", { name: "日保養補充與檢查", exact: true })
-    .click();
-  await clickSaved(page, () =>
-    ws.getByLabel("Standard／Buffer 罩", { exact: true }).check(),
-  );
+  await ws.getByRole("button", { name: "退出螢幕 ×", exact: true }).click();
+  const log = page.getByRole("region", { name: "考試任務紀錄" });
+  await log.getByRole("button", { name: /補充 CLN-1/ }).click();
+  await log.getByRole("button", { name: "操作電腦", exact: true }).click();
+  await clickSaved(page, () => instrument(ws, "Standard／Buffer 罩", true));
   await clickSaved(page, () =>
     ws.getByRole("button", { name: "更換 ISE Standard", exact: true }).click(),
   );
-  await clickSaved(page, () =>
-    ws.getByLabel("後方 syringe 櫃門", { exact: true }).check(),
-  );
+  await instrument(ws, "後方 syringe 櫃門", true);
   await clickSaved(page, () =>
     ws
       .getByLabel("後方 syringe 組 漏水檢查", { exact: true })
       .selectOption("正常"),
   );
+  await ws.getByRole("button", { name: "返回日保養", exact: true }).click();
+  await expect(ws).not.toContainText("擦拭後才檢查排水");
+  await expect(ws).not.toContainText("目前步驟");
+  await expect(
+    ws.getByRole("button", { name: "重設並開始新一輪日保養" }),
+  ).toHaveCount(0);
   await page.reload();
   await page.getByRole("button", { name: "登入／考試", exact: true }).click();
   await expect(page.getByRole("region", { name: "日保養考試" })).toBeVisible({
@@ -752,7 +671,9 @@ test("weekly model actions, skip support, refresh recovery, neutral restrictions
   await clickSaved(page, () =>
     panel.getByRole("button", { name: "提起取出", exact: true }).click(),
   );
-  await expect(page.locator(".exam-save-status")).toContainText("鎖頭仍鎖緊");
+  await expect(page.locator(".assessment-save-status")).toContainText(
+    "鎖頭仍鎖緊",
+  );
   await clickSaved(page, () =>
     page.locator('.exam-room [data-weekly-id="lock-Sample-1"]').click(),
   );
@@ -802,7 +723,9 @@ test("weekly model actions, skip support, refresh recovery, neutral restrictions
     .click();
   await expect(page.getByRole("alert")).toContainText("尚未確認保存");
   await page.getByRole("button", { name: "重試保存", exact: true }).click();
-  await expect(page.locator(".exam-save-status")).toContainText("操作已保存");
+  await expect(page.locator(".assessment-save-status")).toContainText(
+    "操作已保存",
+  );
   await expect
     .poll(async () =>
       page.evaluate(
@@ -1018,13 +941,8 @@ test("HUD exam preserves screen drafts, canvas and time without disclosing answe
     async () => (await (await fetch("/api/attempts/active")).json()).attempt,
   );
   expect(before.progress).toEqual({ completedGroups: 0, totalGroups: 13 });
-  await room
-    .getByRole("button", { name: "模型標籤：ISE 模組", exact: true })
-    .click();
-  const panel = room.locator(".exam-model-panel");
-  await panel.getByRole("button", { name: "操作", exact: true }).click();
-  await panel.getByRole("button", { name: "探針", exact: true }).click();
-  await panel.getByRole("button", { name: "ISE", exact: true }).click();
+  await selectTarget(page, "ISE");
+  const panel = room.locator(".detail-panel");
   await panel.getByRole("button", { name: "實機照片", exact: true }).click();
   const image = panel.locator(".hud-part-info figure img");
   await expect(image).toHaveAttribute(
@@ -1043,8 +961,12 @@ test("HUD exam preserves screen drafts, canvas and time without disclosing answe
   await page.screenshot({
     path: `test-results/${info.project.name}-hud-exam.png`,
   });
-  await room.getByRole("button", { name: "工作站", exact: true }).click();
-  const ws = page.locator(".exam-workstation");
+  await room
+    .getByRole("region", { name: "考試任務紀錄" })
+    .getByRole("button", { name: "操作電腦", exact: true })
+    .click();
+  const ws = room.locator(".workstation");
+  await ws.getByRole("button", { name: "Home 主選單", exact: true }).click();
   await ws
     .getByRole("button", { name: "Analyzer Status", exact: true })
     .click();
@@ -1052,8 +974,8 @@ test("HUD exam preserves screen drafts, canvas and time without disclosing answe
   await page.keyboard.press("Escape");
   await expect(ws).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.locator(".exam-workstation-overlay")).toBeHidden();
-  await room.getByRole("button", { name: "工作站", exact: true }).click();
+  await expect(ws).not.toBeVisible();
+  await room.getByRole("button", { name: "操作電腦", exact: true }).click();
   await expect(ws.locator(".ws-title")).toContainText("Analyzer Status");
   await expect(ws.getByLabel("Bath Temp. 登記")).toHaveValue("37.5");
   await expect(canvas).toHaveAttribute("data-persistence-check", "same-scene");
@@ -1066,9 +988,9 @@ test("HUD exam preserves screen drafts, canvas and time without disclosing answe
   expect(after.startedAt).toBe(before.startedAt);
   expect(after.revision).toBe(before.revision);
   expect(after.progress).toEqual(before.progress);
-  await room
+  await ws
+    .locator(".ws-toolbar")
     .getByRole("button", { name: "到模型操作", exact: true })
-    .first()
     .click();
   await room.getByRole("button", { name: "完成", exact: true }).click();
   await page.getByRole("button", { name: "確認交卷", exact: true }).click();

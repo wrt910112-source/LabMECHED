@@ -1,3 +1,4 @@
+import { useGuidance } from "./GuidanceContext";
 import {
   initialDailyTasks,
   tasksReadiness,
@@ -249,7 +250,10 @@ export function useDailyTraining(
     if (name === "Cleaning (Enhanced)")
       return "已建立 Cleaning (Enhanced) 入口；本次日保養使用 Cleaning，增強清洗程序待補。";
     if (!active) return "請先由「日保養」開始本次練習。";
-    if (["Cleaning Probe", "Inspect Probe & Mixing Bar"].includes(name) && !enabled)
+    if (
+      ["Cleaning Probe", "Inspect Probe & Mixing Bar"].includes(name) &&
+      !enabled
+    )
       return "請先勾選本頁的 Maintenance box。";
     if (name === "Cleaning Probe") {
       if (!canWipe(instrument)) return "請先開啟分析單元主蓋。";
@@ -379,7 +383,14 @@ export function useDailyTraining(
     action,
   };
 }
-export type Daily = ReturnType<typeof useDailyTraining>;
+export type Daily = Omit<
+  ReturnType<typeof useDailyTraining>,
+  "checkReagents" | "runIseDiag" | "recordIseDrain"
+> & {
+  checkReagents: () => string;
+  runIseDiag: () => string;
+  recordIseDrain: (value: string) => string;
+};
 export function DailyOverview({
   d,
   go,
@@ -387,27 +398,32 @@ export function DailyOverview({
   d: Daily;
   go: (p: string) => void;
 }) {
+  const guidance = useGuidance();
   return (
     <section className="daily-page">
-      <h2>日保養練習</h2>
-      <p>
-        清單編號供核對，非固定操作順序。擦拭後才檢查排水；Cleaning 後才
-        Prime；Cleaning 與三次 Prime
-        完成後才校正。試劑可隨時補充；其他項目全數完成後才可進行 Rack
-        Requisition。進度保留至重新整理；Rack 登記需 Entry 儲存
-        Calibration、Serum QC 與 Urine QC，完成後開放第十三組備料上機。
-        申請登記與上機操作均不代表已完成量測。
-      </p>
-      <button onClick={d.reset}>
-        {d.active ? "重設並開始新一輪日保養" : "開始日保養"}
-      </button>
+      <h2>{guidance ? "日保養練習" : "日保養"}</h2>
+      {guidance && (
+        <p>
+          清單編號供核對，非固定操作順序。擦拭後才檢查排水；Cleaning 後才
+          Prime；Cleaning 與三次 Prime
+          完成後才校正。試劑可隨時補充；其他項目全數完成後才可進行 Rack
+          Requisition。進度保留至重新整理；Rack 登記需 Entry 儲存
+          Calibration、Serum QC 與 Urine QC，完成後開放第十三組備料上機。
+          申請登記與上機操作均不代表已完成量測。
+        </p>
+      )}
+      {guidance && (
+        <button onClick={d.reset}>
+          {d.active ? "重設並開始新一輪日保養" : "開始日保養"}
+        </button>
+      )}
       <ol className="daily-steps">
         {dailySteps.map(([s, route], i) => (
           <li key={s}>
             <span>
               {d.completed[i]
                 ? "✓ 已完成"
-                : d.stage === i
+                : guidance && d.stage === i
                   ? "目前步驟"
                   : "待完成"}
             </span>
@@ -428,6 +444,7 @@ export function DailyOverview({
   );
 }
 export function TemperatureRecord({ d }: { d: Daily }) {
+  const guidance = useGuidance();
   return (
     <fieldset className="daily-field">
       <legend>登記本次溫度</legend>
@@ -456,11 +473,13 @@ export function TemperatureRecord({ d }: { d: Daily }) {
       >
         儲存溫度紀錄
       </button>
-      <p>
-        {d.temp.saved
-          ? `已登記：Bath ${d.temp.bath} °C／Coolant ${d.temp.coolant} °C`
-          : "請閱讀示意讀值後登記；不自動判定合格。"}
-      </p>
+      {(d.temp.saved || guidance) && (
+        <p>
+          {d.temp.saved
+            ? `已登記：Bath ${d.temp.bath} °C／Coolant ${d.temp.coolant} °C`
+            : "請閱讀示意讀值後登記；不自動判定合格。"}
+        </p>
+      )}
     </fieldset>
   );
 }
@@ -475,6 +494,7 @@ export function StartCondition({
   onIndex?: () => void;
   disabled?: boolean;
 }) {
+  const guidance = useGuidance();
   return (
     <section className="daily-page">
       <h2>Start Condition</h2>
@@ -519,11 +539,13 @@ export function StartCondition({
           )}
         </tbody>
       </table>
-      <p>
-        {d.index
-          ? "已建立本次練習 Index。"
-          : "按 Edit 後選 New Index；溫度可另行登記。"}
-      </p>
+      {guidance && (
+        <p>
+          {d.index
+            ? "已建立本次練習 Index。"
+            : "按 Edit 後選 New Index；溫度可另行登記。"}
+        </p>
+      )}
       <button
         disabled={disabled || !d.active || !!d.index}
         onClick={() => (onEdit ? onEdit() : d.setEditing(true))}
@@ -556,6 +578,7 @@ export function ProbePractice({
   onDrain?: (id: string, value: string) => void;
   onMix?: (id: string, value: string) => void;
 }) {
+  const guidance = useGuidance();
   if (!d.active || !d.mode) return null;
   return (
     <section className="daily-practice">
@@ -564,12 +587,14 @@ export function ProbePractice({
           ? "酒精棉擦拭 · 6 支探針"
           : "Inspect Probe & Mixing Bar"}
       </h3>
-      <p>
-        此區是實體操作的教學紀錄；未連接實機。
-        {d.mode === "wipe"
-          ? `已擦拭 ${d.wiped.length}／6 支`
-          : "逐項選擇檢查結果，異常項目不會計為完成。"}
-      </p>
+      {guidance && (
+        <p>
+          此區是實體操作的教學紀錄；未連接實機。
+          {d.mode === "wipe"
+            ? `已擦拭 ${d.wiped.length}／6 支`
+            : "逐項選擇檢查結果，異常項目不會計為完成。"}
+        </p>
+      )}
       <div className="daily-probes">
         {probes.map((p) => (
           <div key={p}>
@@ -633,6 +658,7 @@ export function ProbePractice({
   );
 }
 export function IsePreparation({ d }: { d: Daily }) {
+  const guidance = useGuidance();
   return (
     <section className="daily-practice">
       <h3>ISE 試劑杯準備</h3>
@@ -690,10 +716,12 @@ export function IsePreparation({ d }: { d: Daily }) {
           </label>
         ))}
       </div>
-      <p>
-        取出並丟棄 CLEAN 杯後，於上述四個杯位放入對應校正液，每杯至少 10
-        滴。填入滴數表示本次放置紀錄。
-      </p>
+      {guidance && (
+        <p>
+          取出並丟棄 CLEAN 杯後，於上述四個杯位放入對應校正液，每杯至少 10
+          滴。填入滴數表示本次放置紀錄。
+        </p>
+      )}
     </section>
   );
 }
@@ -720,6 +748,7 @@ export function Calibration({
   onReview?: () => void;
   disabled?: boolean;
 }) {
+  const guidance = useGuidance();
   const ready =
     d.active &&
     canRunIse(d.instrument, true) &&
@@ -811,9 +840,10 @@ export function Calibration({
         </table>
       </div>
       <small>Normal Range 依照片重現，未用於實機放行判定。</small>
-      {d.instrument.iseMaintenance && (
+      {guidance && d.instrument.iseMaintenance && (
         <p className="daily-interlock" role="status">
-          請關閉 ISE Maintenance（取消勾選），再執行 Serum／Urine 校正。可在上方「儀器狀態」取消勾選。
+          請關閉 ISE Maintenance（取消勾選），再執行 Serum／Urine
+          校正。可在上方「儀器狀態」取消勾選。
         </p>
       )}
       <div className="daily-inline">

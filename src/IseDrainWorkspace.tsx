@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useGuidance } from "./GuidanceContext";
 import type { Daily } from "./DailyTraining";
 import { canRunIseProbeDiag } from "../shared/dailyScenario";
 export function IseDrainWorkspace({
@@ -10,6 +11,7 @@ export function IseDrainWorkspace({
   notify: (s: string) => void;
   onModel: () => void;
 }) {
+  const guidance = useGuidance();
   const [config, setConfig] = useState({
     unit: d.iseDiag.unit,
     cuvette: d.iseDiag.cuvette,
@@ -78,7 +80,8 @@ export function IseDrainWorkspace({
       <p role="status">
         {!d.iseDiag.ran
           ? "尚未完成有效 DIAG。"
-          : d.drains.ISE || "請觀察並記錄排水結果。"}
+          : d.drains.ISE ||
+            (guidance ? "請觀察並記錄排水結果。" : "DIAG 已執行。")}
       </p>
     </div>
   );

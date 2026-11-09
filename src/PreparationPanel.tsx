@@ -183,8 +183,12 @@ export default function PreparationPanel({
         </button>
         <button onClick={onClose}>返回儀器</button>
       </nav>
-      {view === "loading" && <p className="prep-loading-route hud-card">左側進架 → 儀器內運送 → 右側出架</p>}
-      {!exam && !freeSimulation && (
+      {view === "loading" && (
+        <p className="prep-loading-route hud-card">
+          左側進架 → 儀器內運送 → 右側出架
+        </p>
+      )}
+      {!freeSimulation && (
         <details className="prep-requirements hud-card" open>
           <summary>任務準備清單</summary>
           <p>
@@ -251,7 +255,7 @@ export default function PreparationPanel({
               ? "可任選材料、容器及架色，直接模擬吸取、加入、裝架及上機。不計分，不要求完成十六份或事先完成日保養與 Rack 登記。"
               : preparationScenario.disclaimer}
           </p>
-          {!gate.ready && (
+          {!exam && !gate.ready && (
             <p className="prep-warning" role="status">
               請完成有效的前十二組保養及 Rack 登記，備料操作才會開放。
             </p>
@@ -432,9 +436,11 @@ export default function PreparationPanel({
               <p>
                 {rackNames[rack]}：
                 {
-                  { bench: "工作台", entry: "左側進樣區", loaded: "已推入，右側出架" }[
-                    state.racks[rack].location
-                  ]
+                  {
+                    bench: "工作台",
+                    entry: "左側進樣區",
+                    loaded: "已推入，右側出架",
+                  }[state.racks[rack].location]
                 }
                 {state.racks[rack].location === "loaded" &&
                   !state.racks[rack].loadedToken &&

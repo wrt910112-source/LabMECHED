@@ -32,6 +32,13 @@ import {
 import ReagentManagement from "./ReagentManagement";
 import RackRequisition from "./RackRequisition";
 import type { Daily } from "./DailyTraining";
+import type { ReactNode } from "react";
+import type { ExamCommand } from "../shared/exam";
+export interface AssessmentActions {
+  dispatch: (command: ExamCommand) => Promise<boolean>;
+  disabled: boolean;
+  qcSavedVersion: number;
+}
 
 export default function Workstation({
   open,
@@ -47,7 +54,13 @@ export default function Workstation({
   bottles,
   onWeeklyModel,
   onPreparation,
+  assessment,
+  sessionStatus,
+  sessionControls,
 }: {
+  assessment?: AssessmentActions;
+  sessionStatus?: ReactNode;
+  sessionControls?: ReactNode;
   onPreparation?: () => void;
   weekly?: Weekly;
   bottles: BottleStates;
@@ -82,20 +95,27 @@ export default function Workstation({
   }, [open]);
   useEffect(() => {
     const elements = [
-      ...(dialog.current?.querySelectorAll<HTMLElement>("button,input,select") || []),
+      ...(dialog.current?.querySelectorAll<HTMLElement>(
+        "button,input,select",
+      ) || []),
     ];
     const marked: HTMLElement[] = [];
     for (const el of elements) {
       const label =
         el instanceof HTMLInputElement || el instanceof HTMLSelectElement
-          ? el.getAttribute("aria-label") || el.closest("label")?.textContent?.trim()
+          ? el.getAttribute("aria-label") ||
+            el.closest("label")?.textContent?.trim()
           : el.textContent?.trim();
       if (
         open &&
         guidance &&
         label &&
         guideControls.includes(
-          el instanceof HTMLInputElement ? `input:${label}` : el instanceof HTMLSelectElement ? `select:${label}` : label,
+          el instanceof HTMLInputElement
+            ? `input:${label}`
+            : el instanceof HTMLSelectElement
+              ? `select:${label}`
+              : label,
         ) &&
         !(el as HTMLButtonElement).disabled
       ) {
@@ -103,7 +123,10 @@ export default function Workstation({
         marked.push(el);
         if (el instanceof HTMLInputElement && el.type === "checkbox") {
           const parent = el.closest("label");
-          if (parent) { parent.classList.add("hud-control-target"); marked.push(parent); }
+          if (parent) {
+            parent.classList.add("hud-control-target");
+            marked.push(parent);
+          }
         }
       }
     }
@@ -127,7 +150,31 @@ export default function Workstation({
     setMessage(
       `已選取 ${name}。此版建立選單入口，詳細操作流程尚未加入；未執行儀器動作。`,
     );
-  function perform(name: string) {
+  async function perform(name: string) {
+    if (
+      assessment &&
+      [
+        "Cleaning Probe",
+        "Inspect Probe & Mixing Bar",
+        "Cleaning",
+        "Total Prime",
+      ].includes(name)
+    ) {
+      const command: ExamCommand =
+        name === "Cleaning"
+          ? { type: "cleaning" }
+          : name === "Total Prime"
+            ? { type: "prime" }
+            : {
+                type: "daily-mode",
+                value: name === "Cleaning Probe" ? "wipe" : "inspect",
+              };
+      if (await assessment.dispatch(command)) {
+        if (name === "Cleaning Probe") setProgram("Wipe");
+        if (name === "Inspect Probe & Mixing Bar") setProgram("Inspect");
+      }
+      return;
+    }
     if (
       !weekly &&
       daily.active &&
@@ -179,6 +226,8 @@ export default function Workstation({
     <dialog
       ref={dialog}
       className={active ? "workstation" : "workstation-retained"}
+      data-assessment={!!assessment}
+      data-save-blocked={assessment?.disabled || undefined}
       aria-label="AU5800 操作工作站"
       onCancel={(e) => {
         e.preventDefault();
@@ -203,13 +252,16 @@ export default function Workstation({
       onClose={onExit}
     >
       <div className="ws-session-hud">
-        <span>
-          {weekly
-            ? "周保養練習"
-            : daily.active
-              ? `日保養 ${daily.completed.filter(Boolean).length}／${daily.completed.length}`
-              : "自由探索"}
-        </span>
+        {sessionStatus || (
+          <span>
+            {weekly
+              ? "周保養練習"
+              : daily.active
+                ? `日保養 ${daily.completed.filter(Boolean).length}／${daily.completed.length}`
+                : "自由探索"}
+          </span>
+        )}
+        {sessionControls}
         {guidance && <span className="ws-session-target">{guidance}</span>}
         {!weekly && daily.active && (
           <details className="ws-instrument-hud">
@@ -310,7 +362,7 @@ export default function Workstation({
       ) : page === "日保養補充與檢查" ? (
         <>
           <DailyTasksPanel
-            guidance={daily.active}
+            guidance={daily.active && !assessment}
             tasks={daily.tasks}
             instrument={daily.instrument}
             bottles={bottles}
@@ -324,9 +376,35 @@ export default function Workstation({
           <button onClick={() => navigate("日保養")}>返回日保養</button>
         </>
       ) : page === "Reagent Management" ? (
-        <ReagentManagement d={daily} notify={setMessage} />
+        <ReagentManagement
+          d={daily}
+          notify={setMessage}
+          onCheck={
+            assessment
+              ? () => assessment.dispatch({ type: "reagent-check" })
+              : undefined
+          }
+        />
       ) : page === "Rack Requisition" ? (
         <RackRequisition
+          exam={!!assessment}
+          disabled={assessment?.disabled}
+          qcSavedVersion={assessment?.qcSavedVersion}
+          onEntry={
+            assessment
+              ? (type, selection, category) =>
+                  assessment.dispatch({
+                    type: "rack",
+                    target: type,
+                    data: { category, selection },
+                  })
+              : undefined
+          }
+          onQcEntry={
+            assessment
+              ? (data) => assessment.dispatch({ type: "rack-qc-entry", data })
+              : undefined
+          }
           d={daily}
           notify={setMessage}
           canStart={!daily.active || daily.rackReady}
@@ -355,15 +433,17 @@ export default function Workstation({
             <aside className="ws-home-message">
               <h2>Message</h2>
               <p>選單導覽練習</p>
-              <p>
-                每次保養請檢查
-                <br />
-                <strong>
-                  Bath Temp.
+              {!assessment && (
+                <p>
+                  每次保養請檢查
                   <br />
-                  Coolant Temp.
-                </strong>
-              </p>
+                  <strong>
+                    Bath Temp.
+                    <br />
+                    Coolant Temp.
+                  </strong>
+                </p>
+              )}
               <p>本畫面不顯示患者資料或實機警報。</p>
             </aside>
           </div>
@@ -381,9 +461,11 @@ export default function Workstation({
             <section className="ws-checks">
               <span className="ws-kicker">每次保養檢查</span>
               <h2>確認兩項溫度</h2>
-              <p>
-                閱讀畫面中的 Bath Temp. 與 Coolant Temp. 後，逐項標記已檢查。
-              </p>
+              {!assessment && (
+                <p>
+                  閱讀畫面中的 Bath Temp. 與 Coolant Temp. 後，逐項標記已檢查。
+                </p>
+              )}
               <label>
                 <input
                   type="checkbox"
@@ -412,9 +494,11 @@ export default function Workstation({
               >
                 開始新的保養檢查
               </button>
-              <small>
-                僅記錄是否查看，不自動判定溫度合格。重新整理頁面會清除練習紀錄。
-              </small>
+              {!assessment && (
+                <small>
+                  僅記錄是否查看，不自動判定溫度合格。重新整理頁面會清除練習紀錄。
+                </small>
+              )}
               <TemperatureRecord d={daily} />
             </section>
           </AnalyzerStatusSurface>
@@ -520,7 +604,32 @@ export default function Workstation({
                   <Photocal w={weekly} />
                 </div>
               ) : isIse && tab === "Calibration" ? (
-                <Calibration d={daily} notify={setMessage} />
+                <Calibration
+                  d={daily}
+                  notify={setMessage}
+                  onStart={
+                    assessment
+                      ? (serum, urine) => {
+                          void assessment.dispatch({
+                            type: "calibrate",
+                            target:
+                              serum && urine
+                                ? "both"
+                                : serum
+                                  ? "serum"
+                                  : "urine",
+                          });
+                        }
+                      : undefined
+                  }
+                  onReview={
+                    assessment
+                      ? () => {
+                          void assessment.dispatch({ type: "cal-review" });
+                        }
+                      : undefined
+                  }
+                />
               ) : (
                 <div className="ws-placeholder">
                   <h2>{tab}</h2>
@@ -624,7 +733,8 @@ export default function Workstation({
       )}
       <div className="ws-message" role="status">
         {message ||
-          "教學介面 · 按 Home 返回主選單；按 Esc 或「退出螢幕」返回 3D 儀器。"}
+          (!assessment &&
+            "教學介面 · 按 Home 返回主選單；按 Esc 或「退出螢幕」返回 3D 儀器。")}
       </div>
     </dialog>
   );

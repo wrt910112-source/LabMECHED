@@ -1,4 +1,6 @@
 import { AnalyzerStatusSurface } from "./AnalyzerStatusSurface";
+import SimulatorWorkspace from "./SimulatorWorkspace";
+import { useExamDaily } from "./useExamDaily";
 import { StartCondition, Calibration, ProbePractice } from "./DailyTraining";
 import { MaintenanceSurface } from "./MaintenanceSurface";
 import {
@@ -243,6 +245,44 @@ export default function ExamRoom({
       },
     });
   };
+  // Preserve rapid input in order, assigning each event the latest accepted revision.
+  const queue = useRef(Promise.resolve(true));
+  const queued = useRef(0);
+  const queueGeneration = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [queueSize, setQueueSize] = useState(0);
+  const queueDispatch: Dispatch = (command, source = place) => {
+    if ((retry.current && !lock.current) || queued.current >= 64)
+      return Promise.resolve(false);
+    const generation = queueGeneration.current;
+    queued.current += 1;
+    setQueueSize(queued.current);
+    const result = queue.current.then(async () => {
+      if (!mounted.current || generation !== queueGeneration.current)
+        return false;
+      const accepted = await dispatch(command, source);
+      if (!accepted) queueGeneration.current += 1;
+      return accepted;
+    });
+    queue.current = result.catch(() => false);
+    return result.finally(() => {
+      queued.current -= 1;
+      if (mounted.current) setQueueSize(queued.current);
+    });
+  };
+  const examDaily = useExamDaily(attempt, queueDispatch, hasRetry, () =>
+    setConfirm("abandon"),
+  );
+  const workstationChanged = useCallback(
+    (open: boolean) => setPlace(open ? "workstation" : "model"),
+    [],
+  );
   const s = attempt.sim;
   useEffect(() => {
     const timer = setInterval(() => {
@@ -278,7 +318,7 @@ export default function ExamRoom({
   }, [accept]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (lock.current || retry.current) {
+      if (lock.current || retry.current || queued.current > 0) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -417,7 +457,7 @@ export default function ExamRoom({
           busy: !!s.batch || s.phase === "w2" || s.phase === "photocal",
         }
       : undefined;
-  const disabled = pending || hasRetry;
+  const disabled = pending || hasRetry || queueSize > 0;
   const elapsed = Math.max(0, Math.floor((now - attempt.startedAt) / 1000));
   function finish(operation: "submit" | "abandon") {
     void send({
@@ -425,6 +465,110 @@ export default function ExamRoom({
       body: { revision: attempt.revision },
       finish: operation,
     });
+  }
+  if (attempt.kind === "daily" && hasPreparation(attempt.version)) {
+    const status = (
+      <span role={failure ? "alert" : "status"}>
+        {pending || queueSize > 0 ? "保存中…" : failure || message || "已保存"}
+        {hasRetry && (
+          <button
+            disabled={pending}
+            onClick={() => {
+              if (retry.current) void send(retry.current);
+            }}
+          >
+            重試保存
+          </button>
+        )}
+      </span>
+    );
+    const controls = (
+      <>
+        <span>
+          經過 {Math.floor(elapsed / 60)}:
+          {String(elapsed % 60).padStart(2, "0")}
+        </span>
+        <button disabled={disabled} onClick={() => setConfirm("submit")}>
+          完成
+        </button>
+        <button disabled={disabled} onClick={() => setConfirm("abandon")}>
+          放棄本次
+        </button>
+      </>
+    );
+    return (
+      <section className="exam-room shared-exam-room" aria-label="日保養考試">
+        <SimulatorWorkspace
+          assessment={{
+            daily: examDaily,
+            actions: {
+              dispatch: (command) => queueDispatch(command, "workstation"),
+              disabled: hasRetry,
+              qcSavedVersion,
+            },
+            disabled: hasRetry,
+            status,
+            controls,
+            onWorkstationChange: workstationChanged,
+            prepare: (action) =>
+              queueDispatch(
+                { type: "preparation", data: { ...action } },
+                "model",
+              ),
+            bottle: (id, action) => {
+              void queueDispatch(
+                {
+                  type: "bottle",
+                  target: id,
+                  value: action.kind,
+                  data: { fluid: "fluid" in action ? action.fluid : "" },
+                },
+                "model",
+              );
+            },
+          }}
+        />
+        {confirm && (
+          <dialog
+            ref={confirmDialog}
+            className="exam-confirm-backdrop"
+            onCancel={(e) => {
+              e.preventDefault();
+              if (!disabled) setConfirm(null);
+            }}
+          >
+            <section
+              role="alertdialog"
+              aria-label={confirm === "submit" ? "確認交卷" : "確認放棄"}
+              className="exam-card"
+            >
+              <h2>
+                {confirm === "submit" ? "確定交卷？" : "確定放棄本次考試？"}
+              </h2>
+              <p>
+                {confirm === "submit"
+                  ? "交卷後不能修改本次作答。"
+                  : "放棄後不能繼續本次考試，紀錄仍保留。"}
+              </p>
+              <button disabled={disabled} onClick={() => setConfirm(null)}>
+                取消
+              </button>
+              <button
+                className="exam-primary"
+                disabled={disabled}
+                onClick={() => finish(confirm)}
+              >
+                {pending
+                  ? "保存中…"
+                  : confirm === "submit"
+                    ? "確認交卷"
+                    : "確認放棄"}
+              </button>
+            </section>
+          </dialog>
+        )}
+      </section>
+    );
   }
   return (
     <section
@@ -648,7 +792,12 @@ export default function ExamRoom({
             <button
               aria-label="重設考試視角"
               onClick={() =>
-                setRequest((r) => ({ ...(preparationView ? preparationViews[preparationView] : views[0]), serial: r.serial + 1 }))
+                setRequest((r) => ({
+                  ...(preparationView
+                    ? preparationViews[preparationView]
+                    : views[0]),
+                  serial: r.serial + 1,
+                }))
               }
             >
               <RotateCcw size={17} />
@@ -897,7 +1046,10 @@ export default function ExamRoom({
             view={preparationView}
             onView={(view) => {
               setPreparationView(view);
-              setRequest((r) => ({ ...preparationViews[view], serial: r.serial + 1 }));
+              setRequest((r) => ({
+                ...preparationViews[view],
+                serial: r.serial + 1,
+              }));
             }}
             onClose={() => setPreparationView(null)}
             onComputer={() => {
@@ -1814,8 +1966,12 @@ function ExamWorkstation({
                             active: true,
                             mode: s.dailyMode,
                             wiped: s.wiped,
-                            wipeAccessible: !disabled && !!s.instrument?.mainLid && !!s.instrument?.analyzerMaintenance,
-                            canInspect: !disabled && !!s.instrument?.analyzerMaintenance,
+                            wipeAccessible:
+                              !disabled &&
+                              !!s.instrument?.mainLid &&
+                              !!s.instrument?.analyzerMaintenance,
+                            canInspect:
+                              !disabled && !!s.instrument?.analyzerMaintenance,
                             drains: s.dailyDrains,
                             mix: s.dailyMix,
                             setWiped: () => {},

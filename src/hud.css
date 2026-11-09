@@ -570,7 +570,10 @@
   padding: 8px 10px;
   color: #baf7fb;
   background: #123e4ee6;
-  box-shadow: 0 0 0 5px #49d9ec38, 0 0 24px 10px #49d9ec80, 0 0 48px 16px #49d9ec40;
+  box-shadow:
+    0 0 0 5px #49d9ec38,
+    0 0 24px 10px #49d9ec80,
+    0 0 48px 16px #49d9ec40;
   font-size: 11px;
   pointer-events: none;
   white-space: nowrap;
@@ -737,6 +740,32 @@
 }
 
 /* Assessment uses the same scene frame, with neutral controls and a separate instrument screen. */
+.simulator-shell .exam-portal:has(.shared-exam-room) > .exam-header {
+  display: none;
+}
+.simulator-shell .exam-portal .shared-exam-room {
+  height: 100dvh;
+}
+.assessment-save-status {
+  position: fixed;
+  left: 20px;
+  bottom: 78px;
+  z-index: 38;
+  max-width: min(440px, 80vw);
+  border: 1px solid #426170;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #102330ed;
+  color: #dcebf2;
+  font-size: 12px;
+}
+.assessment-save-status button {
+  margin-left: 8px;
+}
+.workstation[data-save-blocked="true"]
+  > :not(.ws-session-hud):not(.ws-toolbar):not(.ws-message) {
+  pointer-events: none;
+}
 .simulator-shell .exam-portal:has(.exam-room) {
   inset: 0;
   width: 100vw;
@@ -978,7 +1007,10 @@
 .daily-tasks-panel .hud-control-target {
   outline: 3px solid #49d9ef !important;
   outline-offset: 2px;
-  box-shadow: 0 0 0 5px #49d9ef35, 0 0 22px 7px #49d9ef85, 0 0 40px 12px #49d9ef40 !important;
+  box-shadow:
+    0 0 0 5px #49d9ef35,
+    0 0 22px 7px #49d9ef85,
+    0 0 40px 12px #49d9ef40 !important;
 }
 .hud-toast {
   z-index: 200;

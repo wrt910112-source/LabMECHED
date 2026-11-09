@@ -156,6 +156,7 @@ export function TaskCenter({
   );
 }
 export function QuestLog({
+  guidance = true,
   name,
   quests,
   current,
@@ -163,6 +164,7 @@ export function QuestLog({
   onLocate,
   onComputer,
 }: {
+  guidance?: boolean;
   name: string;
   quests: Quest[];
   current: string;
@@ -178,7 +180,8 @@ export function QuestLog({
   useEffect(() => {
     const next = quests.filter((q) => q.done && !previous.current.has(q.id));
     previous.current = new Set(quests.filter((q) => q.done).map((q) => q.id));
-    if (next.length) setToast(`${next.map((q) => q.label).join("、")} 已完成`);
+    if (guidance && next.length)
+      setToast(`${next.map((q) => q.label).join("、")} 已完成`);
   }, [quests]);
   useEffect(() => {
     if (!toast) return;
@@ -190,7 +193,10 @@ export function QuestLog({
       quests.find((q) => q.id === current) ||
       quests.find((q) => !q.done && q.available);
   return (
-    <section className="hud-card quest-log" aria-label="練習任務紀錄">
+    <section
+      className="hud-card quest-log"
+      aria-label={guidance ? "練習任務紀錄" : "考試任務紀錄"}
+    >
       <header>
         <button
           onClick={() => setCollapsed((v) => !v)}
@@ -211,10 +217,12 @@ export function QuestLog({
             {quests.map((q) => (
               <li key={q.id}>
                 <button
-                  aria-current={target?.id === q.id ? "step" : undefined}
+                  aria-current={
+                    guidance && target?.id === q.id ? "step" : undefined
+                  }
                   disabled={!q.available && !q.done}
                   onClick={() => onChoose(q.id)}
-                  title={q.reason}
+                  title={guidance ? q.reason : undefined}
                 >
                   {q.done ? (
                     <Check size={15} />
@@ -235,27 +243,31 @@ export function QuestLog({
           </ol>
           {target && (
             <div className="quest-objective">
-              <small>目前目標</small>
+              <small>{guidance ? "目前目標" : "選取項目"}</small>
               <strong>{target.label}</strong>
-              <p>
-                {target.reason ||
-                  target.instruction ||
-                  "選取部件執行現有保養操作。"}
-              </p>
+              {guidance && (
+                <p>
+                  {target.reason ||
+                    target.instruction ||
+                    "選取部件執行現有保養操作。"}
+                </p>
+              )}
               <div className="hud-inline">
-                <button
-                  onClick={() => onLocate(target.targets[0] || "console")}
-                >
-                  <Crosshair size={14} />
-                  定位目前目標
-                </button>
+                {guidance && (
+                  <button
+                    onClick={() => onLocate(target.targets[0] || "console")}
+                  >
+                    <Crosshair size={14} />
+                    定位目前目標
+                  </button>
+                )}
                 <button onClick={() => onComputer(target.route)}>
                   操作電腦
                 </button>
               </div>
             </div>
           )}
-          {done === quests.length && (
+          {guidance && done === quests.length && (
             <p className="hud-success">本次練習已完成</p>
           )}
         </>

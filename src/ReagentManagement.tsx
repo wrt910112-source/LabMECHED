@@ -14,9 +14,11 @@ import "./requisition.css";
 export default function ReagentManagement({
   d,
   notify,
+  onCheck,
 }: {
   d: Daily;
   notify: (s: string) => void;
+  onCheck?: () => Promise<boolean>;
 }) {
   return (
     <ReagentSurface
@@ -25,6 +27,7 @@ export default function ReagentManagement({
       notify={notify}
       onReplace={d.replaceReagent}
       onCheck={() => {
+        if (onCheck) return onCheck();
         const result = d.checkReagents();
         notify(result);
         return !result.startsWith("請先");

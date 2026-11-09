@@ -30,10 +30,10 @@
 .exam-portal::backdrop {
   background: #142f32ba;
 }
-.exam-portal * {
+.exam-portal:not(:has(.shared-exam-room)) * {
   box-sizing: border-box;
 }
-.exam-portal button,
+.exam-portal:not(:has(.shared-exam-room)) button,
 .exam-link-button {
   border: 1px solid #acbeb6;
   border-radius: 7px;
@@ -48,34 +48,34 @@
   gap: 7px;
   line-height: 1.35;
 }
-.exam-portal button:hover:not(:disabled),
+.exam-portal:not(:has(.shared-exam-room)) button:hover:not(:disabled),
 .exam-link-button:hover {
   background: #e3eee7;
 }
-.exam-portal button:focus-visible,
-.exam-portal a:focus-visible {
+.exam-portal:not(:has(.shared-exam-room)) button:focus-visible,
+.exam-portal:not(:has(.shared-exam-room)) a:focus-visible {
   outline: 3px solid #4ea18b;
   outline-offset: 2px;
 }
-.exam-portal button:disabled {
+.exam-portal:not(:has(.shared-exam-room)) button:disabled {
   opacity: 0.55;
   cursor: default;
 }
-.exam-portal button[aria-pressed="true"] {
+.exam-portal:not(:has(.shared-exam-room)) button[aria-pressed="true"] {
   background: #d2e7dc;
   border-color: #6f9f89;
 }
-.exam-portal .exam-primary {
+.exam-portal:not(:has(.shared-exam-room)) .exam-primary {
   background: #276b55;
   color: #fff;
   border-color: #276b55;
   font-weight: 700;
 }
-.exam-portal .exam-primary:hover:not(:disabled) {
+.exam-portal:not(:has(.shared-exam-room)) .exam-primary:hover:not(:disabled) {
   background: #1b513f;
 }
-.exam-portal input:not([type="checkbox"]),
-.exam-portal select {
+.exam-portal:not(:has(.shared-exam-room)) input:not([type="checkbox"]),
+.exam-portal:not(:has(.shared-exam-room)) select {
   width: 100%;
   min-width: 0;
   padding: 9px 10px;
@@ -85,44 +85,44 @@
   border: 1px solid #b0c2b7;
   border-radius: 6px;
 }
-.exam-portal input[type="checkbox"] {
+.exam-portal:not(:has(.shared-exam-room)) input[type="checkbox"] {
   width: 18px;
   height: 18px;
   accent-color: #2a765e;
   flex-shrink: 0;
 }
-.exam-portal label {
+.exam-portal:not(:has(.shared-exam-room)) label {
   display: flex;
   align-items: center;
   gap: 8px;
   line-height: 1.5;
 }
-.exam-portal form > label {
+.exam-portal:not(:has(.shared-exam-room)) form > label {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   margin-bottom: 14px;
   gap: 6px;
 }
-.exam-portal h1 {
+.exam-portal:not(:has(.shared-exam-room)) h1 {
   font-size: 30px;
   line-height: 1.35;
   margin: 10px 0;
 }
-.exam-portal h2 {
+.exam-portal:not(:has(.shared-exam-room)) h2 {
   font-size: 22px;
   margin: 14px 0;
   display: flex;
   align-items: center;
   gap: 9px;
 }
-.exam-portal h3 {
+.exam-portal:not(:has(.shared-exam-room)) h3 {
   font-size: 18px;
 }
-.exam-portal p {
+.exam-portal:not(:has(.shared-exam-room)) p {
   line-height: 1.65;
 }
-.exam-portal small {
+.exam-portal:not(:has(.shared-exam-room)) small {
   font-size: 13px;
   line-height: 1.6;
   color: #5c7269;
@@ -303,25 +303,25 @@
   border-radius: 7px;
   margin: 12px 0 24px;
 }
-.exam-portal table {
+.exam-portal:not(:has(.shared-exam-room)) table {
   width: 100%;
   border-collapse: collapse;
   background: #fff;
   font-size: 14px;
 }
-.exam-portal th,
-.exam-portal td {
+.exam-portal:not(:has(.shared-exam-room)) th,
+.exam-portal:not(:has(.shared-exam-room)) td {
   padding: 11px;
   border-bottom: 1px solid #dde4dd;
   text-align: left;
   vertical-align: middle;
 }
-.exam-portal th {
+.exam-portal:not(:has(.shared-exam-room)) th {
   background: #e3ece6;
   color: #304c3f;
   white-space: nowrap;
 }
-.exam-portal tr:last-child td {
+.exam-portal:not(:has(.shared-exam-room)) tr:last-child td {
   border-bottom: 0;
 }
 .exam-debrief {
@@ -336,7 +336,7 @@
 .debrief-groups details {
   padding: 17px;
 }
-.exam-portal summary {
+.exam-portal:not(:has(.shared-exam-room)) summary {
   cursor: pointer;
   font-weight: 700;
 }
@@ -684,7 +684,7 @@
   inset: 100px 8% 30px;
 }
 @media (max-width: 1400px) {
-  .exam-portal {
+  .exam-portal:not(:has(.shared-exam-room)) {
     font-size: 14px;
   }
   .exam-scroll {
@@ -696,7 +696,7 @@
   .exam-model-layout {
     grid-template-columns: minmax(0, 1fr) 315px;
   }
-  .exam-portal button {
+  .exam-portal:not(:has(.shared-exam-room)) button {
     padding: 8px 11px;
   }
   .exam-stat strong {
@@ -784,8 +784,8 @@
   z-index: 1;
 }
 
-.exam-room button:disabled,
-.exam-room button:disabled:hover {
+.exam-room:not(.shared-exam-room) button:disabled,
+.exam-room:not(.shared-exam-room) button:disabled:hover {
   background: #626a70;
   color: #c4c9cc;
   border-color: #565f65;
