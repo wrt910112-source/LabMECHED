@@ -207,7 +207,15 @@ export default function AdminAccounts({
           <button onClick={() => void run(load)} disabled={busy}>
             重新載入
           </button>
-          <button onClick={() => document.getElementById("course-invitations")?.scrollIntoView({ behavior: "smooth" })}>課程邀請碼</button>
+          <button
+            onClick={() =>
+              document
+                .getElementById("course-invitations")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            課程邀請碼
+          </button>
         </div>
       </header>
       {error && (
@@ -714,7 +722,7 @@ export default function AdminAccounts({
               </table>
             </div>
           ) : (
-            <p>尚無保存的學習紀錄。練習目前尚未跨登入保存。</p>
+            <p>尚無考試紀錄。練習紀錄與投入時間請至「學習成效」查看。</p>
           )}
         </AccountDialog>
       )}

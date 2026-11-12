@@ -7,6 +7,9 @@ import { createApplication } from "../server/index.mjs";
 import { seedAccount } from "../server/account-fixture.mjs";
 let backend: ChildProcess | null = null,
   ready: Promise<void> | null = null;
+const initialized = new WeakSet<Page>();
+let fixtureDbPath = "",
+  counter = 0;
 const origin = "http://127.0.0.1:3005";
 export async function practiceAccount(page: Page) {
   if (!ready)
@@ -15,6 +18,7 @@ export async function practiceAccount(page: Page) {
         mkdtempSync(join(tmpdir(), "practice-account-")),
         "test.sqlite",
       );
+      fixtureDbPath = path;
       const app = createApplication({ dbPath: path });
       await seedAccount(app.db, "practice-user", "learner");
       app.db.close();
@@ -35,14 +39,21 @@ export async function practiceAccount(page: Page) {
       throw Error("Practice account test backend failed to start");
     })();
   await ready;
+  if (initialized.has(page)) return;
+  initialized.add(page);
+  const username = `practice-${process.pid}-${++counter}`;
+  const fixture = createApplication({ dbPath: fixtureDbPath });
+  await seedAccount(fixture.db, username, "learner");
+  fixture.db.close();
   const r = await page.request.post(origin + "/api/auth/login", {
-    data: { username: "practice-user", password: "Testing123!" },
+    data: { username, password: "Testing123!" },
   });
   if (!r.ok()) throw Error("Practice fixture login failed");
   await page.route("**/api/**", async (route) => {
     const r = await route.fetch({
+      maxRetries: 1,
       url: route.request().url().replace("http://127.0.0.1:5173", origin),
     });
-    await route.fulfill({ response: r });
+    await route.fulfill({ response: r, body: await r.body() });
   });
 }

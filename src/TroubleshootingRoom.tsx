@@ -76,6 +76,7 @@ function RoomV2({
   onReset,
   onFinishExam,
   onRetry,
+  retryLabel = "重試保存",
   networkFailure = false,
   startedAt,
 }: Props) {
@@ -1115,7 +1116,7 @@ function RoomV2({
                     ? "模擬執行中…"
                     : feedback || notice || "操作驅動進度；資料均為教學模擬。"}
             </p>
-            {onRetry && button("retry", "重試保存", onRetry, busy)}
+            {onRetry && button("retry", retryLabel, onRetry, busy)}
             <button onClick={() => go("log")}>檢視操作紀錄</button>
             <button onClick={() => go("sop")}>查看 SOP</button>
             {onReset &&

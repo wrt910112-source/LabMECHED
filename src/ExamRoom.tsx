@@ -1,6 +1,7 @@
 import { AnalyzerStatusSurface } from "./AnalyzerStatusSurface";
 import SimulatorWorkspace from "./SimulatorWorkspace";
 import { useExamDaily } from "./useExamDaily";
+import { useTrainingActivity } from "./useTrainingActivity";
 import { StartCondition, Calibration, ProbePractice } from "./DailyTraining";
 import { MaintenanceSurface } from "./MaintenanceSurface";
 import {
@@ -104,6 +105,11 @@ export default function ExamRoom({
     [message, setMessage] = useState(""),
     [failure, setFailure] = useState(""),
     [pending, setPending] = useState(false);
+  const activity = useTrainingActivity(
+    "exam",
+    initial.id,
+    attempt.status === "active",
+  );
   const current = useRef(attempt),
     lock = useRef(false);
   const polling = useRef(false);
@@ -215,7 +221,10 @@ export default function ExamRoom({
       setHasRetry(true);
       if (error instanceof ApiError && error.status === 401)
         onSessionExpired?.();
-      if (error instanceof ApiError && error.status === 409) {
+      if (
+        error instanceof ApiError &&
+        (error.status === 409 || error.status === 423)
+      ) {
         retry.current = null;
         setHasRetry(false);
         try {
@@ -457,7 +466,7 @@ export default function ExamRoom({
           busy: !!s.batch || s.phase === "w2" || s.phase === "photocal",
         }
       : undefined;
-  const disabled = pending || hasRetry || queueSize > 0;
+  const disabled = pending || hasRetry || queueSize > 0 || activity.blocked;
   const elapsed = Math.max(0, Math.floor((now - attempt.startedAt) / 1000));
   function finish(operation: "submit" | "abandon") {
     void send({
@@ -484,6 +493,18 @@ export default function ExamRoom({
     );
     const controls = (
       <>
+        {activity.error && (
+          <span role="alert">
+            {activity.error}
+            <button
+              onClick={() =>
+                void activity.reconnect(activity.blocked).catch(() => {})
+              }
+            >
+              {activity.blocked ? "接手操作" : "重新連線"}
+            </button>
+          </span>
+        )}
         <span>
           經過 {Math.floor(elapsed / 60)}:
           {String(elapsed % 60).padStart(2, "0")}
@@ -503,10 +524,10 @@ export default function ExamRoom({
             daily: examDaily,
             actions: {
               dispatch: (command) => queueDispatch(command, "workstation"),
-              disabled: hasRetry,
+              disabled: hasRetry || activity.blocked,
               qcSavedVersion,
             },
-            disabled: hasRetry,
+            disabled: hasRetry || activity.blocked,
             status,
             controls,
             onWorkstationChange: workstationChanged,

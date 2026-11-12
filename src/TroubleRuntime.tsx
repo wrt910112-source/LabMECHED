@@ -8,6 +8,7 @@ import {
 } from "../shared/troubleshooting";
 import type { Attempt, ExamCommand } from "../shared/exam";
 import { api, ApiError } from "./examApi";
+import { useTrainingActivity } from "./useTrainingActivity";
 
 export function useTroublePractice() {
   const [state, setState] = useState(initialTroubleshooting),
@@ -63,6 +64,11 @@ export function TroubleshootingExam({
     [feedback, setFeedback] = useState(""),
     [failed, setFailed] = useState(false),
     [confirm, setConfirm] = useState<"submit" | "abandon" | null>(null);
+  const activity = useTrainingActivity(
+    "exam",
+    initial.id,
+    attempt.status === "active",
+  );
   const current = useRef(initial),
     locked = useRef(false),
     polling = useRef(false),
@@ -106,6 +112,10 @@ export function TroubleshootingExam({
       setFeedback((error as Error).message);
       if (error instanceof ApiError && error.status === 401)
         onSessionExpired?.();
+      if (error instanceof ApiError && error.status === 423) {
+        retry.current = null;
+        setFailed(false);
+      }
       if (error instanceof ApiError && error.status === 409) {
         retry.current = null;
         try {
@@ -197,19 +207,30 @@ export function TroubleshootingExam({
         state={attempt.sim.troubleshooting}
         exam
         busy={busy}
-        locked={!!retry.current}
-        networkFailure={failed}
-        feedback={feedback}
+        locked={!!retry.current || activity.blocked}
+        networkFailure={failed || !!activity.error}
+        feedback={activity.error || feedback}
         startedAt={attempt.startedAt}
         onAction={act}
         onReturn={() => setConfirm("abandon")}
         onFinishExam={() => setConfirm("submit")}
+        retryLabel={
+          activity.error
+            ? activity.blocked
+              ? "接手操作"
+              : "重新連線"
+            : "重試保存"
+        }
         onRetry={
-          failed && retry.current
+          activity.error
             ? () => {
-                if (retry.current) void send(retry.current);
+                void activity.reconnect(activity.blocked).catch(() => {});
               }
-            : undefined
+            : failed && retry.current
+              ? () => {
+                  if (retry.current) void send(retry.current);
+                }
+              : undefined
         }
       />
       <dialog

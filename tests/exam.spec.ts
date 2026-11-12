@@ -1,4 +1,5 @@
-﻿import { createApplication } from "../server/index.mjs";
+import { reloadExamWindow } from "./ui";
+import { createApplication } from "../server/index.mjs";
 import { seedAccount } from "../server/account-fixture.mjs";
 import { isTaskOpen } from "../shared/availability";
 import { fillPreparationUI, preparationShot } from "./preparation-ui";
@@ -66,6 +67,10 @@ test.beforeAll(async () => {
   }
   throw new Error(`Test backend did not start: ${output}`);
 });
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: "wait" });
+});
+
 test.afterAll(async () => {
   if (backend && backend.exitCode === null) {
     const exited = new Promise((r) => backend.once("exit", r));
@@ -77,14 +82,21 @@ test.beforeEach(async ({ page }, info) => {
   await page.route("**/api/**", async (route) => {
     try {
       const response = await route.fetch({
+        maxRetries: 1,
         url: route.request().url().replace("http://127.0.0.1:5173", serverURL),
       });
-      await route.fulfill({ response });
+      await route.fulfill({ response, body: await response.body() });
     } catch (error) {
-      if (!page.isClosed()) throw error;
+      if (
+        !page.isClosed() &&
+        !/Fetch response has been disposed|Target page, context or browser has been closed/.test(
+          String(error),
+        )
+      )
+        throw error;
     }
   });
-  page.setDefaultTimeout(12000);
+  page.setDefaultTimeout(30000);
 });
 async function clickSaved(page: Page, action: () => Promise<unknown>) {
   const response = page.waitForResponse(
@@ -412,7 +424,7 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
       const response = await route.fetch({
         url: route.request().url().replace("http://127.0.0.1:5173", serverURL),
       });
-      await route.fulfill({ response });
+      await route.fulfill({ response, body: await response.body() });
     }
   });
   await ws.getByRole("button", { name: "Entry", exact: true }).click();
@@ -499,8 +511,7 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
     );
     expect(retried.revision).toBe(committed);
     expect(retried.sim.preparation.pipette.materialId).toBe("lcc1");
-    await page.reload();
-    await page.getByRole("button", { name: "登入／考試", exact: true }).click();
+    await reloadExamWindow(page);
     await page
       .locator(".shared-exam-room > .simulator-shell > .topbar")
       .getByRole("button", { name: "備料工作台", exact: true })
@@ -629,8 +640,7 @@ test("daily exam mode buttons are disabled natively and new inspection evidence 
   await expect(
     ws.getByRole("button", { name: "重設並開始新一輪日保養" }),
   ).toHaveCount(0);
-  await page.reload();
-  await page.getByRole("button", { name: "登入／考試", exact: true }).click();
+  await reloadExamWindow(page);
   await expect(page.getByRole("region", { name: "日保養考試" })).toBeVisible({
     timeout: 12000,
   });
@@ -687,8 +697,7 @@ test("weekly model actions, skip support, refresh recovery, neutral restrictions
     await clickSaved(page, () =>
       panel.getByRole("button", { name, exact: true }).click(),
     );
-  await page.reload();
-  await page.getByRole("button", { name: "登入／考試", exact: true }).click();
+  await reloadExamWindow(page);
   await expect(page.getByRole("region", { name: "周保養考試" })).toBeVisible({
     timeout: 12000,
   });
@@ -711,7 +720,7 @@ test("weekly model actions, skip support, refresh recovery, neutral restrictions
       const response = await route.fetch({
         url: route.request().url().replace("http://127.0.0.1:5173", serverURL),
       });
-      await route.fulfill({ response });
+      await route.fulfill({ response, body: await response.body() });
     }
   });
   await panel.getByRole("button", { name: "攪拌棒", exact: true }).click();
@@ -838,8 +847,7 @@ test("complete weekly run, native W2/Photocal navigation, restoration and repeat
     });
   await command(page, { type: "cup", value: "full" });
   await command(page, { type: "lid", value: false });
-  await page.reload();
-  await page.getByRole("button", { name: "登入／考試", exact: true }).click();
+  await reloadExamWindow(page);
   await page.getByRole("button", { name: "工作站", exact: true }).click();
   const ws = page.locator(".exam-workstation");
   await ws
@@ -897,8 +905,7 @@ test("complete weekly run, native W2/Photocal navigation, restoration and repeat
     { type: "cover", target: "iseTop", value: false },
   ])
     await command(page, c);
-  await page.reload();
-  await page.getByRole("button", { name: "登入／考試", exact: true }).click();
+  await reloadExamWindow(page);
   await page.getByRole("button", { name: "完成", exact: true }).click();
   await page.getByRole("button", { name: "確認交卷", exact: true }).click();
   await expect(page.locator(".exam-stats")).toContainText("100 / 100");

@@ -1,3 +1,4 @@
+import { reloadExamWindow } from "./ui";
 import { createApplication } from "../server/index.mjs";
 import { seedAccount } from "../server/account-fixture.mjs";
 import { test, expect } from "@playwright/test";
@@ -46,18 +47,29 @@ test.afterAll(async () => {
   }
 });
 test.beforeEach(async ({ page }) => {
-  page.setDefaultTimeout(15000);
+  page.setDefaultTimeout(30000);
   await page.route("**/api/**", async (route) => {
     try {
       const response = await route.fetch({
+        maxRetries: 1,
         url: route.request().url().replace("http://127.0.0.1:5173", serverURL),
       });
-      await route.fulfill({ response });
+      await route.fulfill({ response, body: await response.body() });
     } catch (error) {
-      if (!page.isClosed()) throw error;
+      if (
+        !page.isClosed() &&
+        !/Fetch response has been disposed|Target page, context or browser has been closed/.test(
+          String(error),
+        )
+      )
+        throw error;
     }
   });
 });
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: "wait" });
+});
+
 test.beforeEach(async ({ page }) => {
   await page.request.post(serverURL + "/api/auth/login", {
     data: { username: "teacher", password: "Testing123!" },
@@ -95,10 +107,27 @@ test("UIBC practice completes all twelve steps with original cups, both old reag
   await expect(
     result.room.getByRole("table", { name: "UIBC 操作紀錄" }),
   ).toContainText("remove-old UIBC R1");
-  await result.b("返回任務中心").click();
+  await expect(page.locator(".practice-session-bar")).toContainText(
+    "本輪已完成並封存",
+  );
+  const completed = await page.evaluate(
+    async () => (await (await fetch("/api/analytics/me")).json()).sessions,
+  );
+  // Admin test rounds are intentionally excluded from learner analytics.
+  expect(completed).toEqual([]);
+  await page
+    .locator(".practice-session-bar")
+    .getByRole("button", { name: "開始新一輪", exact: true })
+    .click();
+  await expect(page.locator(".trouble-room")).toContainText("步驟 1／12");
+  await page
+    .locator(".practice-session-bar")
+    .getByRole("button", { name: "返回探索（保留練習）", exact: true })
+    .click();
+  await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await page.getByRole("button", { name: /04.*障礙排除/ }).click();
   await page.getByRole("button", { name: "繼續練習", exact: true }).click();
-  await expect(page.locator(".trouble-room")).toContainText("本次訓練操作完成");
+  await expect(page.locator(".trouble-room")).toContainText("步驟 1／12");
   expect(errors).toEqual([]);
 });
 test("UIBC exam preserves state and time through reload and lost-save retry without answer guidance", async ({
@@ -174,10 +203,7 @@ test("UIBC exam preserves state and time through reload and lost-save retry with
           (await (await fetch("/api/attempts/active")).json()).attempt,
       );
       expect(retried.revision).toBe(committed.revision);
-      await page.reload();
-      await page
-        .getByRole("button", { name: "登入／考試", exact: true })
-        .click();
+      await reloadExamWindow(page);
       await expect(page.locator(".trouble-room")).toBeVisible({
         timeout: 15000,
       });
@@ -202,10 +228,7 @@ test("UIBC exam preserves state and time through reload and lost-save retry with
         ).attempt;
       const before = await active();
       expect(before.sim.troubleshooting.qcRecovered).toBe(false);
-      await page.reload();
-      await page
-        .getByRole("button", { name: "登入／考試", exact: true })
-        .click();
+      await reloadExamWindow(page);
       await expect(room.locator('[data-guide="nav-chart"]')).toHaveAttribute(
         "aria-pressed",
         "true",

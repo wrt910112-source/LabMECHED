@@ -106,7 +106,7 @@ export function TaskCenter({
         <button aria-pressed={!exam} onClick={() => setExam(false)}>
           <GraduationCap />
           練習模式
-          <small>提供操作目標；只保留本頁會話，尚未支援跨登入保存</small>
+          <small>提供操作目標；登入後保存練習進度，可跨登入接續</small>
         </button>
         <button aria-pressed={exam} onClick={() => setExam(true)}>
           <ClipboardList />
@@ -126,7 +126,7 @@ export function TaskCenter({
           aria-label="確認重新開始"
           className="hud-warning"
         >
-          <p>重新開始會清除本次練習進度。</p>
+          <p>重新開始會封存本輪紀錄，再開始新一輪練習。</p>
           <button onClick={() => setConfirm(false)}>取消</button>
           <button
             onClick={() => {

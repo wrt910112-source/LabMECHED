@@ -2,7 +2,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-export const databaseVersion = 3;
+export const databaseVersion = 4;
 
 export function consistentBackup(db, dbPath) {
   const dir = resolve(dirname(dbPath), "backups");
@@ -65,7 +65,8 @@ export function migrateDatabase(db, dbPath = ":memory:") {
         "UPDATE users SET must_change_password=1 WHERE username=? AND role='administrator'",
       ).run("000029220");
     }
-    db.exec(`
+    if (version < 3)
+      db.exec(`
       CREATE TABLE invitations (
         id TEXT PRIMARY KEY, cohort_id TEXT NOT NULL REFERENCES cohorts(id),
         code_hash TEXT UNIQUE NOT NULL, code_suffix TEXT NOT NULL,
@@ -76,7 +77,35 @@ export function migrateDatabase(db, dbPath = ":memory:") {
       );
       ALTER TABLE users ADD COLUMN invitation_id TEXT REFERENCES invitations(id);
       CREATE INDEX users_invitation ON users(invitation_id);
-      PRAGMA user_version=3;
+    `);
+    db.exec(`
+      CREATE TABLE practice_sessions (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL,
+        version TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', started_at INTEGER NOT NULL,
+        ended_at INTEGER, revision INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL, result TEXT,
+        background_snapshot TEXT, background_version TEXT, cohort_id TEXT, participant INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX one_practice_draft ON practice_sessions(user_id,kind) WHERE status='active';
+      CREATE INDEX practice_history ON practice_sessions(user_id,started_at);
+      CREATE TABLE practice_events (
+        id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES practice_sessions(id), seq INTEGER NOT NULL,
+        at INTEGER NOT NULL, source TEXT NOT NULL, command TEXT NOT NULL, accepted INTEGER NOT NULL,
+        label TEXT NOT NULL, error TEXT NOT NULL, diagnostic TEXT, UNIQUE(session_id,seq)
+      );
+      ALTER TABLE events ADD COLUMN diagnostic TEXT;
+      ALTER TABLE attempts ADD COLUMN analytics_participant INTEGER;
+      CREATE TABLE training_activity (
+        mode TEXT NOT NULL, session_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id),
+        active_ms INTEGER NOT NULL DEFAULT 0, observed_since INTEGER NOT NULL,
+        quality TEXT NOT NULL, PRIMARY KEY(mode,session_id)
+      );
+      CREATE TABLE training_leases (
+        user_id TEXT PRIMARY KEY REFERENCES users(id), view_id TEXT NOT NULL, token TEXT NOT NULL,
+        mode TEXT NOT NULL, session_id TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        last_at INTEGER NOT NULL, sequence INTEGER NOT NULL DEFAULT 0,
+        visible INTEGER NOT NULL DEFAULT 0, active_until INTEGER NOT NULL
+      );
+      PRAGMA user_version=4;
       COMMIT;
     `);
   } catch (error) {

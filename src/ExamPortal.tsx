@@ -30,6 +30,7 @@ import { TroubleshootingExam } from "./TroubleRuntime";
 import "./exam.css";
 import "./accounts.css";
 import AdminAccounts from "./AdminAccounts";
+import LearningAnalytics from "./LearningAnalytics";
 import { ProfileForm, PasswordChange } from "./AccountProfile";
 import {
   useAccountSession,
@@ -43,18 +44,21 @@ export const duration = (ms: number) => {
   return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
 };
 const stamp = (time: number) => new Date(time).toLocaleString("zh-TW");
-type PortalPage = "menu" | "history" | "admin" | "profile" | "password";
+type PortalPage =
+  "menu" | "history" | "admin" | "profile" | "password" | "analytics";
 
 export default function ExamPortal({
   open,
   onClose,
   requestedKind,
   onSceneActive,
+  onPractice,
 }: {
   open: boolean;
   onClose: () => void;
   requestedKind?: ExamKind;
   onSceneActive?: (active: boolean) => void;
+  onPractice?: (kind: "daily" | "troubleshooting") => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const { user, requiresInitialization } = useAccountSession();
@@ -457,6 +461,12 @@ export default function ExamPortal({
               我的歷程
             </button>
             <button onClick={() => setPage("profile")}>學員資料</button>
+            <button
+              aria-pressed={page === "analytics"}
+              onClick={() => setPage("analytics")}
+            >
+              學習成效
+            </button>
             <button onClick={() => setPage("password")}>變更密碼</button>
             {user.role === "administrator" && (
               <button
@@ -565,6 +575,9 @@ export default function ExamPortal({
               </>
             )}
             {page === "admin" && <AdminAccounts inspect={inspect} />}
+            {page === "analytics" && (
+              <LearningAnalytics user={user} onPractice={onPractice} />
+            )}
           </main>
         </>
       )}

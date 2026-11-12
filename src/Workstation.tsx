@@ -35,6 +35,7 @@ import type { Daily } from "./DailyTraining";
 import type { ReactNode } from "react";
 import type { ExamCommand } from "../shared/exam";
 export interface AssessmentActions {
+  practice?: boolean;
   dispatch: (command: ExamCommand) => Promise<boolean>;
   disabled: boolean;
   qcSavedVersion: number;
@@ -57,10 +58,12 @@ export default function Workstation({
   assessment,
   sessionStatus,
   sessionControls,
+  sessionFeedback,
 }: {
   assessment?: AssessmentActions;
   sessionStatus?: ReactNode;
   sessionControls?: ReactNode;
+  sessionFeedback?: string;
   onPreparation?: () => void;
   weekly?: Weekly;
   bottles: BottleStates;
@@ -75,6 +78,7 @@ export default function Workstation({
   daily: Daily;
   onModel: (area: "probes" | "cups") => void;
 }) {
+  const exam = !!assessment && !assessment.practice;
   const dialog = useRef<HTMLDialogElement>(null);
   const [w2Open, setW2Open] = useState(false);
   useEffect(() => {
@@ -362,7 +366,7 @@ export default function Workstation({
       ) : page === "日保養補充與檢查" ? (
         <>
           <DailyTasksPanel
-            guidance={daily.active && !assessment}
+            guidance={daily.active && !exam}
             tasks={daily.tasks}
             instrument={daily.instrument}
             bottles={bottles}
@@ -387,7 +391,7 @@ export default function Workstation({
         />
       ) : page === "Rack Requisition" ? (
         <RackRequisition
-          exam={!!assessment}
+          exam={exam}
           disabled={assessment?.disabled}
           qcSavedVersion={assessment?.qcSavedVersion}
           onEntry={
@@ -433,7 +437,7 @@ export default function Workstation({
             <aside className="ws-home-message">
               <h2>Message</h2>
               <p>選單導覽練習</p>
-              {!assessment && (
+              {!exam && (
                 <p>
                   每次保養請檢查
                   <br />
@@ -461,7 +465,7 @@ export default function Workstation({
             <section className="ws-checks">
               <span className="ws-kicker">每次保養檢查</span>
               <h2>確認兩項溫度</h2>
-              {!assessment && (
+              {!exam && (
                 <p>
                   閱讀畫面中的 Bath Temp. 與 Coolant Temp. 後，逐項標記已檢查。
                 </p>
@@ -494,9 +498,9 @@ export default function Workstation({
               >
                 開始新的保養檢查
               </button>
-              {!assessment && (
+              {!exam && (
                 <small>
-                  僅記錄是否查看，不自動判定溫度合格。重新整理頁面會清除練習紀錄。
+                  僅記錄是否查看，不自動判定溫度合格；查看標記僅供本次導覽。
                 </small>
               )}
               <TemperatureRecord d={daily} />
@@ -732,8 +736,9 @@ export default function Workstation({
         </div>
       )}
       <div className="ws-message" role="status">
-        {message ||
-          (!assessment &&
+        {sessionFeedback ||
+          message ||
+          (!exam &&
             "教學介面 · 按 Home 返回主選單；按 Esc 或「退出螢幕」返回 3D 儀器。")}
       </div>
     </dialog>

@@ -39,6 +39,10 @@ export function useExamDaily(
     if (JSON.stringify(s.drops) === JSON.stringify(dropRef.current))
       setDropDraft(null);
   }, [s.drops]);
+  useEffect(() => {
+    if (tempDraft && JSON.stringify(s.temp) === JSON.stringify(tempDraft))
+      setTempDraft(null);
+  }, [s.temp, tempDraft]);
   const call = (c: ExamCommand) => {
     if (!blocked)
       void dispatch(c).then((ok) => {

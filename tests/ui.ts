@@ -2,9 +2,11 @@ import { practiceAccount } from "./practice-account";
 import { expect, type Page, type Locator } from "@playwright/test";
 /** Follow the HUD navigation; selection itself intentionally never moves the camera. */
 export async function selectPart(page: Page, id: string, bottles = false) {
-  const scope = (await page.locator(".shared-exam-room").count())
-    ? page.locator(".shared-exam-room")
-    : page;
+  const scope = (await page.locator(".persistent-practice-room").count())
+    ? page.locator(".persistent-practice-room")
+    : (await page.locator(".shared-exam-room").count())
+      ? page.locator(".shared-exam-room")
+      : page;
   const directory = scope.getByRole("button", {
     name: "部件目錄",
     exact: true,
@@ -36,9 +38,11 @@ export async function startDaily(page: Page) {
     .click();
 }
 export async function selectTarget(page: Page, id: string) {
-  const scope = (await page.locator(".shared-exam-room").count())
-    ? page.locator(".shared-exam-room")
-    : page;
+  const scope = (await page.locator(".persistent-practice-room").count())
+    ? page.locator(".persistent-practice-room")
+    : (await page.locator(".shared-exam-room").count())
+      ? page.locator(".shared-exam-room")
+      : page;
   await scope.getByRole("button", { name: "部件目錄", exact: true }).click();
   const targets = scope.locator(".directory-targets");
   if (
@@ -123,5 +127,27 @@ export async function replaceAll(ws: Locator) {
   for (const button of await buttons.all()) {
     await button.click();
     await expect(button).toBeDisabled();
+  }
+}
+
+// A reload has a new window identity. Explicitly reclaim if its unload pulse
+// did not release the previous lease before the new page arrived.
+export async function reloadExamWindow(page: import("@playwright/test").Page) {
+  await page.reload();
+  const permission = page
+    .waitForResponse((r) => r.url().endsWith("/api/training/lease"), {
+      timeout: 30000,
+    })
+    .catch(async (error) => {
+      console.log(
+        "Reloaded exam:",
+        await page.locator(".exam-portal").innerText(),
+      );
+      throw error;
+    });
+  await page.getByRole("button", { name: "登入／考試", exact: true }).click();
+  const response = await permission;
+  if (response.status() === 423) {
+    await page.getByRole("button", { name: "接手操作", exact: true }).click();
   }
 }

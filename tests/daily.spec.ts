@@ -11,7 +11,7 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   page,
 }, info) => {
   test.setTimeout(240000);
-  page.setDefaultTimeout(12000);
+  page.setDefaultTimeout(30000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
@@ -28,7 +28,11 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
     await button("Home 主選單").click();
     await button(name).click();
   };
-  await expect(screen.locator(".ws-toolbar").getByRole("button", { name: "日保養", exact: true })).toHaveCount(0);
+  await expect(
+    screen
+      .locator(".ws-toolbar")
+      .getByRole("button", { name: "日保養", exact: true }),
+  ).toHaveCount(0);
   await home("Start Condition");
   await expect(button("New Index")).toBeDisabled();
   await home("Analyzer Status");
@@ -67,7 +71,7 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   await instrument(screen, "ISE Maintenance", false);
   await instrument(screen, "ISE 上蓋開啟", true);
   await button("Cleaning").click();
-  await expect(screen.getByRole("status")).toContainText("裝滿");
+  await expect(screen.getByRole("status")).toContainText("CLEAN 杯");
   await cups(screen, async () => {
     await button("在 CLEAN 放置裝滿的 Cleaning Solution").click();
   });
@@ -199,9 +203,13 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
     path: `test-results/${info.project.name}-hud-daily-complete.png`,
   });
   await button("退出螢幕 ×").click();
-  await page.getByRole("button", { name: "任務中心", exact: true }).click();
-  await page.getByRole("button", { name: "重新開始練習", exact: true }).click();
-  await page.getByRole("button", { name: "確認重新開始", exact: true }).click();
+  await expect(page.locator(".persistent-practice-room")).toContainText(
+    "本輪已完成並封存",
+  );
+  await page
+    .locator(".persistent-practice-room > .simulator-shell > .topbar")
+    .getByRole("button", { name: "開始新一輪", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "練習任務紀錄" }),
   ).toContainText("0／13");

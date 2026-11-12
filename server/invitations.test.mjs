@@ -428,9 +428,9 @@ test("v2 migration backs up data and preserves credentials, cohorts, snapshots a
       "SELECT password,learner_code,must_change_password FROM users WHERE id=?",
     )
     .get(userId);
-  // Reconstruct a v2 database by removing only the newly added v3 objects.
+  // Reconstruct an authentic v2 database by removing v3/v4 additions.
   app.db.exec(
-    "DROP INDEX users_invitation; ALTER TABLE users DROP COLUMN invitation_id; DROP TABLE invitations; PRAGMA user_version=2;",
+    "DROP TABLE practice_events; DROP TABLE practice_sessions; DROP TABLE training_activity; DROP TABLE training_leases; ALTER TABLE events DROP COLUMN diagnostic; ALTER TABLE attempts DROP COLUMN analytics_participant; DROP INDEX users_invitation; ALTER TABLE users DROP COLUMN invitation_id; DROP TABLE invitations; PRAGMA user_version=2;",
   );
   app.db
     .prepare("INSERT INTO cohorts VALUES(?,?,?)")
@@ -445,7 +445,7 @@ test("v2 migration backs up data and preserves credentials, cohorts, snapshots a
   await app.close();
   app = createApplication({ dbPath: path });
   assert.equal(app.migration.from, 2);
-  assert.equal(app.migration.to, 3);
+  assert.equal(app.migration.to, 4);
   assert.ok(existsSync(app.migration.backup));
   assert.deepEqual(
     app.db
@@ -460,7 +460,7 @@ test("v2 migration backs up data and preserves credentials, cohorts, snapshots a
       .cohort_id,
     "retained-course",
   );
-  assert.deepEqual(app.db.prepare("SELECT * FROM attempts WHERE id='retained-attempt'").get(), oldAttempt);
+  assert.deepEqual({...app.db.prepare("SELECT * FROM attempts WHERE id='retained-attempt'").get()}, {...oldAttempt,analytics_participant:null});
   const saved = new DatabaseSync(app.migration.backup, { readOnly: true });
   assert.equal(saved.prepare("PRAGMA user_version").get().user_version, 2);
   saved.close();

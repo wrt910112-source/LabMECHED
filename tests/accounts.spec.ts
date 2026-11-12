@@ -33,9 +33,10 @@ test.beforeEach(async ({ page }) => {
   }
   await page.route("**/api/**", async (route) => {
     const response = await route.fetch({
+      maxRetries: 1,
       url: route.request().url().replace("http://127.0.0.1:5173", origin),
     });
-    await route.fulfill({ response });
+    await route.fulfill({ response, body: await response.body() });
   });
   page.setDefaultTimeout(15000);
 });
@@ -280,9 +281,15 @@ test("course invitations create learner accounts, keep secrets one-time and reta
   const secret = management.locator(".invitation-secret");
   await expect(secret.locator("code")).toHaveText(/^[A-Za-z0-9_-]{22}$/);
   const code = (await secret.locator("code").textContent())!;
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:5173" });
+  await page
+    .context()
+    .grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: "http://127.0.0.1:5173",
+    });
   await secret.getByRole("button", { name: "複製邀請碼", exact: true }).click();
-  await expect(secret.getByRole("button", { name: "已複製邀請碼", exact: true })).toBeVisible();
+  await expect(
+    secret.getByRole("button", { name: "已複製邀請碼", exact: true }),
+  ).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
   expect(
     await page.evaluate(() => JSON.stringify([localStorage, sessionStorage])),

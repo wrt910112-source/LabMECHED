@@ -76,6 +76,7 @@ export default function TroubleshootingRoom({
   onReset,
   onFinishExam,
   onRetry,
+  retryLabel = "重試保存",
   networkFailure = false,
   locked = false,
   startedAt,
@@ -89,6 +90,7 @@ export default function TroubleshootingRoom({
   onReset?: () => void;
   onFinishExam?: () => void;
   onRetry?: () => void;
+  retryLabel?: string;
   networkFailure?: boolean;
   locked?: boolean;
   startedAt?: number;
@@ -998,7 +1000,7 @@ export default function TroubleshootingRoom({
             </p>
             {onRetry && (
               <button disabled={busy} onClick={onRetry}>
-                重試保存
+                {retryLabel}
               </button>
             )}
             <button onClick={() => go("log")}>檢視操作紀錄</button>

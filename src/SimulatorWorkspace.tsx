@@ -1,3 +1,4 @@
+import { api } from "./examApi";
 import { canHandleBottle } from "../shared/dailyScenario";
 import { isTaskOpen } from "../shared/availability";
 import { useAccountSession, refreshAccountSession } from "./accountSession";
@@ -73,6 +74,8 @@ import {
 } from "./detergents";
 
 export interface WorkspaceAssessment {
+  mode?: "practice" | "exam";
+  feedback?: string;
   daily: Daily;
   actions: AssessmentActions;
   disabled: boolean;
@@ -82,7 +85,15 @@ export interface WorkspaceAssessment {
   bottle: (id: string, action: BottleAction) => void;
   onWorkstationChange: (open: boolean) => void;
 }
+export interface WorkspacePracticeProps {
+  open: boolean;
+  kind: "daily" | "troubleshooting";
+  restart: boolean;
+  onClose: () => void;
+  onSceneActive?: (active: boolean) => void;
+}
 export interface WorkspacePortalProps {
+  onPractice?: (kind: "daily" | "troubleshooting") => void;
   open: boolean;
   onClose: () => void;
   requestedKind?: ExamKind;
@@ -91,11 +102,21 @@ export interface WorkspacePortalProps {
 export default function SimulatorWorkspace({
   assessment,
   AccountPortal,
+  PracticePortal,
 }: {
   assessment?: WorkspaceAssessment;
   AccountPortal?: ComponentType<WorkspacePortalProps>;
+  PracticePortal?: ComponentType<WorkspacePracticeProps>;
 }) {
+  const exam = !!assessment && assessment.mode !== "practice";
+  const [practiceOpen, setPracticeOpen] = useState(false),
+    [persistentKind, setPersistentKind] = useState<"daily" | "troubleshooting">(
+      "daily",
+    ),
+    [persistentRestart, setPersistentRestart] = useState(false);
   const accountSession = useAccountSession();
+  const [savedPracticeKinds, setSavedPracticeKinds] = useState<string[]>([]);
+
   const pendingPractice = useRef<{
     kind: MissionKind;
     restart: boolean;
@@ -116,11 +137,18 @@ export default function SimulatorWorkspace({
   }, [accountSession.user]);
   const [examOpen, setExamOpen] = useState(false),
     [examSceneActive, setExamSceneActive] = useState(false);
+  const sceneActive = examSceneActive || practiceOpen;
   const [sessionMode, setSessionMode] = useState<"explore" | TaskKind>(
     assessment ? "daily" : "explore",
   );
   const [taskCenterOpen, setTaskCenterOpen] = useState(false),
     [directoryOpen, setDirectoryOpen] = useState(false);
+  useEffect(() => {
+    if (PracticePortal && accountSession.user && taskCenterOpen)
+      void api<{ sessions: { kind: string }[] }>("/practice-sessions/active")
+        .then((r) => setSavedPracticeKinds(r.sessions.map((s) => s.kind)))
+        .catch(() => {});
+  }, [accountSession.user, taskCenterOpen]);
   const [panelOpen, setPanelOpen] = useState(false),
     [panelTab, setPanelTab] = useState<"info" | "actions" | "photo">("info");
   const [selection, setSelection] = useState<SceneSelection | null>(null),
@@ -277,8 +305,8 @@ export default function SimulatorWorkspace({
         : [];
   const activeQuest =
     quests.find(
-      (q) => q.id === currentQuest && (assessment || (!q.done && q.available)),
-    ) || (assessment ? quests[0] : quests.find((q) => !q.done && q.available));
+      (q) => q.id === currentQuest && (exam || (!q.done && q.available)),
+    ) || (exam ? quests[0] : quests.find((q) => !q.done && q.available));
   const dailyCovers = daily.active && !weeklyOpen;
   const visibleMainLid = weeklyOpen
     ? weekly.lid
@@ -731,6 +759,13 @@ export default function SimulatorWorkspace({
       setExamOpen(true);
       return;
     }
+    if (PracticePortal && (kind === "daily" || kind === "troubleshooting")) {
+      setPersistentKind(kind);
+      setPersistentRestart(restart);
+      setPracticeOpen(true);
+      setWorkstationOpen(false);
+      return;
+    }
     if (kind === "troubleshooting") {
       setPreparationView(null);
       setWorkstationOpen(false);
@@ -827,821 +862,839 @@ export default function SimulatorWorkspace({
     else await stage.current?.requestFullscreen();
   };
   return (
-    <GuidanceContext.Provider value={!assessment}>
+    <GuidanceContext.Provider value={!exam}>
       <div
-        className={`app-shell simulator-shell ${panelOpen ? "has-info" : ""} ${directoryOpen ? "directory-open" : ""}`}
-        data-preparation={!!preparationView && !examSceneActive}
+        className={`app-shell ${sceneActive ? "" : "simulator-shell"} ${panelOpen ? "has-info" : ""} ${directoryOpen ? "directory-open" : ""}`}
+        data-preparation={!!preparationView && !sceneActive}
         data-mode={sessionMode}
         data-assessment={!!assessment}
       >
-        <header className="topbar" inert={examSceneActive || undefined}>
-          <a
-            className="brand"
-            href="./"
-            onClick={(e) => {
-              e.preventDefault();
-              reset();
-            }}
-            aria-label="AU5800 Lab 首頁"
-          >
-            <span className="brand-symbol">
-              <Activity size={22} />
-            </span>
-            <span>
-              AU5800<span className="brand-lab">LAB</span>
-            </span>
-          </a>
-          <span className="top-divider" />
-          <span className="top-subtitle">生化組・數位學習空間</span>
-          <div className="top-right">
-            <span className="hud-mode">
-              {assessment
-                ? "日保養 · 考試模式"
-                : sessionMode === "explore"
-                  ? "自由探索"
-                  : sessionMode === "daily"
-                    ? "日保養 · 練習模式"
-                    : "周保養 · 練習模式"}
-            </span>
-            {sessionMode !== "explore" && !assessment && (
-              <button onClick={returnToExplore}>返回探索（保留練習）</button>
-            )}
-            {!assessment && (
-              <button
-                className="hud-primary"
-                onClick={() => setTaskCenterOpen(true)}
-              >
-                任務中心
-              </button>
-            )}
-            <button
-              aria-expanded={directoryOpen}
-              onClick={() => setDirectoryOpen((v) => !v)}
+        {!sceneActive && (
+          <header className="topbar">
+            <a
+              className="brand"
+              href="./"
+              onClick={(e) => {
+                e.preventDefault();
+                reset();
+              }}
+              aria-label="AU5800 Lab 首頁"
             >
-              部件目錄
-            </button>
-            {!assessment && (
+              <span className="brand-symbol">
+                <Activity size={22} />
+              </span>
+              <span>
+                AU5800<span className="brand-lab">LAB</span>
+              </span>
+            </a>
+            <span className="top-divider" />
+            <span className="top-subtitle">生化組・數位學習空間</span>
+            <div className="top-right">
+              <span className="hud-mode">
+                {exam
+                  ? "日保養 · 考試模式"
+                  : sessionMode === "explore"
+                    ? "自由探索"
+                    : sessionMode === "daily"
+                      ? "日保養 · 練習模式"
+                      : "周保養 · 練習模式"}
+              </span>
+              {sessionMode !== "explore" && !assessment && (
+                <button onClick={returnToExplore}>返回探索（保留練習）</button>
+              )}
+              {!assessment && (
+                <button
+                  className="hud-primary"
+                  onClick={() => setTaskCenterOpen(true)}
+                >
+                  任務中心
+                </button>
+              )}
               <button
-                className="exam-entry"
-                onClick={() => {
-                  setWorkstationOpen(false);
-                  setExamOpen(true);
-                }}
+                aria-expanded={directoryOpen}
+                onClick={() => setDirectoryOpen((v) => !v)}
               >
-                登入／考試
+                部件目錄
               </button>
-            )}
-            {assessment?.controls}
-            {sessionMode !== "weekly" && (
-              <button
-                onClick={() => {
-                  setPreparationView("bench");
-                  setWorkstationOpen(false);
-                }}
-              >
-                備料工作台
-              </button>
-            )}
-            <span className="version">
-              EXPLORER <b>01</b>
-            </span>
-            {!assessment && (
-              <button className="help-btn" onClick={() => setModal("help")}>
-                <CircleHelp size={17} />
-                操作說明
-              </button>
-            )}
-            <div className="avatar">教</div>
-          </div>
-        </header>
+              {!assessment && (
+                <button
+                  className="exam-entry"
+                  onClick={() => {
+                    setWorkstationOpen(false);
+                    setExamOpen(true);
+                  }}
+                >
+                  登入／考試
+                </button>
+              )}
+              {assessment?.controls}
+              {sessionMode !== "weekly" && (
+                <button
+                  onClick={() => {
+                    setPreparationView("bench");
+                    setWorkstationOpen(false);
+                  }}
+                >
+                  備料工作台
+                </button>
+              )}
+              <span className="version">
+                EXPLORER <b>01</b>
+              </span>
+              {!assessment && (
+                <button className="help-btn" onClick={() => setModal("help")}>
+                  <CircleHelp size={17} />
+                  操作說明
+                </button>
+              )}
+              <div className="avatar">教</div>
+            </div>
+          </header>
+        )}
         {assessment && (
           <div className="assessment-save-status">{assessment.status}</div>
         )}
-        <div className="workspace" inert={examSceneActive || undefined}>
-          <aside className="sidebar">
-            <header className="hud-drawer-title">
-              <h2>部件目錄</h2>
-              <button
-                aria-label="關閉部件目錄"
-                onClick={() => setDirectoryOpen(false)}
-              >
-                <X size={18} />
-              </button>
-            </header>
-            <div className="module-heading">
-              <span className="section-label">探索模組</span>
-              <span className="count">{parts.length - 1}</span>
-            </div>
-            <label className="search">
-              <Search size={15} />
-              <input
-                aria-label="搜尋部件"
-                placeholder="搜尋部件或名稱"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              {query && (
-                <button aria-label="清除搜尋" onClick={() => setQuery("")}>
-                  <X size={13} />
-                </button>
-              )}
-            </label>
-            <nav className="part-nav" aria-label="探索模組">
-              <button
-                className={`part-item overview-item ${selected === "overview" ? "active" : ""}`}
-                onClick={() => select("overview")}
-                aria-pressed={selected === "overview"}
-              >
-                <Layers3 size={16} />
-                <span>整機總覽</span>
-                <ChevronRight size={14} />
-              </button>
-              {filtered.map((part) => (
-                <button
-                  key={part.id}
-                  data-testid={`part-${part.id}`}
-                  className={`part-item ${selected === part.id ? "active" : ""} ${part.parent && part.parent !== "overview" ? "child" : ""}`}
-                  onClick={() => select(part.id)}
-                  aria-pressed={selected === part.id}
-                >
-                  <span className="part-number">{part.number}</span>
-                  <span>{part.name}</span>
-                  {selected === part.id && <ChevronRight size={14} />}
-                </button>
-              ))}
-              {!filtered.length && <p className="no-results">找不到相符部件</p>}
-              <details className="directory-targets">
-                <summary>探針、攪拌及杯位</summary>
-                {practiceIds
-                  .filter(
-                    (id) =>
-                      !query || id.toLowerCase().includes(query.toLowerCase()),
-                  )
-                  .map((id) => (
+        <div className="workspace" inert={sceneActive || undefined}>
+          {!sceneActive && (
+            <>
+              <aside className="sidebar">
+                <header className="hud-drawer-title">
+                  <h2>部件目錄</h2>
+                  <button
+                    aria-label="關閉部件目錄"
+                    onClick={() => setDirectoryOpen(false)}
+                  >
+                    <X size={18} />
+                  </button>
+                </header>
+                <div className="module-heading">
+                  <span className="section-label">探索模組</span>
+                  <span className="count">{parts.length - 1}</span>
+                </div>
+                <label className="search">
+                  <Search size={15} />
+                  <input
+                    aria-label="搜尋部件"
+                    placeholder="搜尋部件或名稱"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                  {query && (
+                    <button aria-label="清除搜尋" onClick={() => setQuery("")}>
+                      <X size={13} />
+                    </button>
+                  )}
+                </label>
+                <nav className="part-nav" aria-label="探索模組">
+                  <button
+                    className={`part-item overview-item ${selected === "overview" ? "active" : ""}`}
+                    onClick={() => select("overview")}
+                    aria-pressed={selected === "overview"}
+                  >
+                    <Layers3 size={16} />
+                    <span>整機總覽</span>
+                    <ChevronRight size={14} />
+                  </button>
+                  {filtered.map((part) => (
                     <button
-                      key={id}
-                      data-testid={`target-${id}`}
-                      onClick={() =>
-                        inspect({
-                          partId: id.startsWith("R1")
-                            ? "r1"
-                            : id.startsWith("R2")
-                              ? "r2"
-                              : id.startsWith("Sample")
-                                ? "sample"
-                                : ["左側", "右側"].includes(id)
-                                  ? "mixing"
-                                  : id === "ISE"
-                                    ? "ise"
-                                    : "ise-cups",
-                          dailyId: id,
-                        })
-                      }
+                      key={part.id}
+                      data-testid={`part-${part.id}`}
+                      className={`part-item ${selected === part.id ? "active" : ""} ${part.parent && part.parent !== "overview" ? "child" : ""}`}
+                      onClick={() => select(part.id)}
+                      aria-pressed={selected === part.id}
                     >
-                      {id} ·{" "}
-                      {["S-H", "S-L", "U-H", "U-L"].includes(id)
-                        ? "杯位"
-                        : ["左側", "右側"].includes(id)
-                          ? "攪拌單元"
-                          : "探針"}
+                      <span className="part-number">{part.number}</span>
+                      <span>{part.name}</span>
+                      {selected === part.id && <ChevronRight size={14} />}
                     </button>
                   ))}
-              </details>
-            </nav>
-            <div className="sidebar-bottom">
-              <span className="mini-book">
-                <BookOpen size={16} />
-              </span>
-              <div>
-                <strong>依據科內操作手冊</strong>
-                <span>FTAB0C37S · 第 4 版</span>
-              </div>
-              <button
-                aria-label="檢視資料來源"
-                onClick={() => setModal("sources")}
-              >
-                <ChevronRight size={17} />
-              </button>
-            </div>
-          </aside>
-          <main className="main-content">
-            <div className="page-heading">
-              <div>
-                <div className="breadcrumb">
-                  學習工作室
-                  <ChevronRight size={12} />
-                  <span>儀器導覽</span>
+                  {!filtered.length && (
+                    <p className="no-results">找不到相符部件</p>
+                  )}
+                  <details className="directory-targets">
+                    <summary>探針、攪拌及杯位</summary>
+                    {practiceIds
+                      .filter(
+                        (id) =>
+                          !query ||
+                          id.toLowerCase().includes(query.toLowerCase()),
+                      )
+                      .map((id) => (
+                        <button
+                          key={id}
+                          data-testid={`target-${id}`}
+                          onClick={() =>
+                            inspect({
+                              partId: id.startsWith("R1")
+                                ? "r1"
+                                : id.startsWith("R2")
+                                  ? "r2"
+                                  : id.startsWith("Sample")
+                                    ? "sample"
+                                    : ["左側", "右側"].includes(id)
+                                      ? "mixing"
+                                      : id === "ISE"
+                                        ? "ise"
+                                        : "ise-cups",
+                              dailyId: id,
+                            })
+                          }
+                        >
+                          {id} ·{" "}
+                          {["S-H", "S-L", "U-H", "U-L"].includes(id)
+                            ? "杯位"
+                            : ["左側", "右側"].includes(id)
+                              ? "攪拌單元"
+                              : "探針"}
+                        </button>
+                      ))}
+                  </details>
+                </nav>
+                <div className="sidebar-bottom">
+                  <span className="mini-book">
+                    <BookOpen size={16} />
+                  </span>
+                  <div>
+                    <strong>依據科內操作手冊</strong>
+                    <span>FTAB0C37S · 第 4 版</span>
+                  </div>
+                  <button
+                    aria-label="檢視資料來源"
+                    onClick={() => setModal("sources")}
+                  >
+                    <ChevronRight size={17} />
+                  </button>
                 </div>
-                <h1>
-                  認識你的 AU5800<span className="title-dot">.</span>
-                </h1>
-                <p>旋轉、放大，探索每一個模組與部件。</p>
-              </div>
-              <div className="explore-badge">
-                <span />
-                <span>{modelPractice ? "模型日保養操作" : "自由探索模式"}</span>
-              </div>
-            </div>
-            <div className="explorer-layout">
-              <section
-                className="model-stage"
-                ref={stage}
-                aria-label="3D 儀器導覽"
-              >
-                <div className="stage-top">
-                  <div className="scene-title">
-                    <Box size={17} />
+              </aside>
+              <main className="main-content">
+                <div className="page-heading">
+                  <div>
+                    <div className="breadcrumb">
+                      學習工作室
+                      <ChevronRight size={12} />
+                      <span>儀器導覽</span>
+                    </div>
+                    <h1>
+                      認識你的 AU5800<span className="title-dot">.</span>
+                    </h1>
+                    <p>旋轉、放大，探索每一個模組與部件。</p>
+                  </div>
+                  <div className="explore-badge">
+                    <span />
                     <span>
-                      AU5800 <b>/</b>{" "}
-                      {selected === "overview" ? "整機總覽" : p.name}
+                      {modelPractice ? "模型日保養操作" : "自由探索模式"}
                     </span>
                   </div>
-                  <span className="render-badge">
-                    <span className={ready ? "ready" : ""} />
-                    {unavailable
-                      ? "3D 無法使用"
-                      : ready
-                        ? "3D LIVE"
-                        : "載入模型"}
-                  </span>
                 </div>
-                {!examSceneActive && !troubleOpen && (
-                  <Viewer
-                    preparation={
-                      preparationView
-                        ? {
-                            state: preparationState,
-                            gate: preparationAccess,
-                            freeSimulation: freePreparationMode,
-                            view: preparationView,
-                            exam: !!assessment,
-                          }
-                        : undefined
-                    }
-                    onPreparationSelect={(id) => {
-                      prepare({
-                        action: "select",
-                        target: id,
-                      });
-                    }}
-                    suspended={workstationOpen}
-                    onInspect={inspect}
-                    onClear={clearSelection}
-                    selection={selection}
-                    rightInset={
-                      preparationView || panelOpen || sessionMode !== "explore"
-                        ? Math.min(innerWidth * 0.25, 360)
-                        : 0
-                    }
-                    guidanceTargets={
-                      assessment || workstationOpen
-                        ? []
-                        : activeQuest?.targets || []
-                    }
-                    daily={daily}
-                    weekly={weeklyOpen ? weekly : undefined}
-                    onWeeklySelect={weeklyModelAction}
-                    practice={modelPractice}
-                    practiceTarget={
-                      selected === "overview" ? "" : practiceTarget
-                    }
-                    onPracticeSelect={practiceSelect}
-                    iseState={visibleIseState}
-                    doorState={visibleDoors}
-                    selected={selected}
-                    internal={visibleMainLid}
-                    labels={labels}
-                    request={request}
-                    onSelect={select}
-                    zoom={zoom}
-                    onReady={onReady}
-                    onError={onError}
-                    bottles={bottles}
-                    selectedSlot={selectedSlot}
-                    onSlot={selectSlot}
-                  />
-                )}
-                <div
-                  className={`stage-caption ${selected !== "overview" ? "compact" : " "}`}
-                >
-                  <span className="eyebrow">BECKMAN COULTER</span>
-                  <h2>{selected === "overview" ? "AU5800" : p.en}</h2>
-                  <p>
-                    {selected === "overview"
-                      ? "MODULAR CHEMISTRY ANALYZER"
-                      : `COMPONENT ${p.number} / UNIT EXPLORER`}
-                  </p>
-                </div>
-                <div className="view-tabs" aria-label="視角快捷鍵">
-                  {views.map((v) => (
-                    <button
-                      key={v.id}
-                      aria-pressed={activeView === v.id}
-                      className={activeView === v.id ? "active" : ""}
-                      onClick={() => {
-                        setActiveView(v.id);
-                        setRequest((r) => ({ ...v, serial: r.serial + 1 }));
-                      }}
-                    >
-                      {v.id === "front" ? (
-                        <Box size={14} />
-                      ) : v.id === "top" ? (
-                        <Layers3 size={14} />
-                      ) : (
-                        <Rotate3D size={14} />
-                      )}{" "}
-                      {v.label}
-                    </button>
-                  ))}
-                  <span />
-                  {(["ise", "r1", "r2", "sample"] as PartId[]).map((id) => (
-                    <button
-                      key={id}
-                      className={activeView === id ? "active" : ""}
-                      aria-pressed={activeView === id}
-                      onClick={() => select(id)}
-                    >
-                      {id === "sample" ? "樣品探針" : id.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-                <div className="stage-tools">
-                  <button
-                    title="放大"
-                    aria-label="放大模型"
-                    onClick={() => setZoom((z) => z + 1)}
+                <div className="explorer-layout">
+                  <section
+                    className="model-stage"
+                    ref={stage}
+                    aria-label="3D 儀器導覽"
                   >
-                    <Plus size={19} />
-                  </button>
-                  <button
-                    title="縮小"
-                    aria-label="縮小模型"
-                    onClick={() => setZoom((z) => z - 1)}
-                  >
-                    <Minus size={19} />
-                  </button>
-                  <span />
-                  <button
-                    title="重設視角"
-                    aria-label="重設視角"
-                    onClick={reset}
-                  >
-                    <RotateCcw size={17} />
-                  </button>
-                  <button
-                    title="全螢幕"
-                    aria-label="全螢幕"
-                    onClick={() =>
-                      void fullscreen().catch(() => setModal("help"))
-                    }
-                  >
-                    <Maximize2 size={17} />
-                  </button>
-                </div>
-                <div className="axis-indicator">
-                  <span className="axis-n">後</span>
-                  <div>
-                    <span>左</span>
-                    <Crosshair size={25} />
-                    <span>右</span>
-                  </div>
-                  <span>前</span>
-                </div>
-                <div className="stage-bottom">
-                  <div className="mouse-hint">
-                    <MousePointer2 size={14} />
-                    <span>拖曳旋轉</span>
-                    <span className="hint-divider" />
-                    <span>滾輪縮放</span>
-                  </div>
-                  <button
-                    className={`label-toggle ${labels ? "on" : ""}`}
-                    onClick={() => setLabels((v) => !v)}
-                    aria-pressed={labels}
-                  >
-                    <Tag size={14} />
-                    {labels ? "標籤開啟" : "標籤關閉"}
-                  </button>
-                </div>
-              </section>
-              <div className="hud-rail">
-                {sessionMode !== "explore" && (
-                  <QuestLog
-                    guidance={!assessment}
-                    name={sessionMode === "daily" ? "日保養" : "周保養"}
-                    quests={quests}
-                    current={activeQuest?.id || ""}
-                    onChoose={setCurrentQuest}
-                    onLocate={locateTarget}
-                    onComputer={questComputer}
-                  />
-                )}
-                {!panelOpen && selected !== "overview" && (
-                  <button
-                    className="hud-restore"
-                    onClick={() => setPanelOpen(true)}
-                  >
-                    展開部件資訊
-                  </button>
-                )}
-                <aside
-                  hidden={!panelOpen}
-                  ref={detailPanel}
-                  className="detail-panel"
-                  aria-label="部件說明"
-                >
-                  <header className="hud-card-header">
-                    <strong>部件資訊</strong>
-                    <div>
-                      <button
-                        aria-label="收合部件資訊"
-                        onClick={() => setPanelOpen(false)}
-                      >
-                        −
-                      </button>
-                      <button aria-label="取消選取" onClick={clearSelection}>
-                        <X size={16} />
-                      </button>
+                    <div className="stage-top">
+                      <div className="scene-title">
+                        <Box size={17} />
+                        <span>
+                          AU5800 <b>/</b>{" "}
+                          {selected === "overview" ? "整機總覽" : p.name}
+                        </span>
+                      </div>
+                      <span className="render-badge">
+                        <span className={ready ? "ready" : ""} />
+                        {unavailable
+                          ? "3D 無法使用"
+                          : ready
+                            ? "3D LIVE"
+                            : "載入模型"}
+                      </span>
                     </div>
-                  </header>
-                  <nav className="hud-info-tabs">
-                    {(
-                      [
-                        ["info", "認識"],
-                        ["actions", "操作"],
-                        ["photo", "實機照片"],
-                      ] as const
-                    ).map(([id, name]) => (
-                      <button
-                        key={id}
-                        aria-pressed={panelTab === id}
-                        onClick={() => setPanelTab(id)}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </nav>
-                  <button className="hud-focus" onClick={() => focusPart()}>
-                    聚焦部件 · {p.name}
-                  </button>
-                  {panelTab !== "actions" ? (
-                    <PartInformation
-                      part={p}
-                      tab={panelTab}
-                      photoSelection={{
-                        targetId: selection?.weeklyId || selection?.dailyId,
-                        slotId: selectedSlot,
-                      }}
-                      detail={
-                        selection?.weeklyId ||
-                        selection?.dailyId ||
-                        (selectedSlot
-                          ? slotById[selectedSlot]?.label
-                          : undefined)
-                      }
-                      status={
-                        selectedSlot
-                          ? `目前液量 ${Math.round((bottles[selectedSlot]?.level || 0) * 100)}%`
-                          : `分析單元主蓋：${visibleMainLid ? "開啟" : "關閉"} · ISE module 鐵蓋：${visibleIseState.open ? "開啟" : "關閉"}`
-                      }
-                    />
-                  ) : (
-                    <div className="hud-operation-content">
-                      <h3>{p.name}</h3>
-                      <ContextCovers
-                        disabledReason={
-                          weeklyOpen && weekly.busy
-                            ? "儀器運轉中，請等待本次程序完成。"
+                    {!sceneActive && !troubleOpen && (
+                      <Viewer
+                        preparation={
+                          preparationView
+                            ? {
+                                state: preparationState,
+                                gate: preparationAccess,
+                                freeSimulation: freePreparationMode,
+                                view: preparationView,
+                                exam,
+                              }
                             : undefined
                         }
-                        part={selected}
-                        door={selection?.doorId}
-                        mainOpen={visibleMainLid}
-                        moduleOpen={visibleIseState.open}
-                        doors={visibleDoors}
-                        main={toggleMainCover}
-                        module={toggleModuleCover}
-                        toggle={toggleDoor}
+                        onPreparationSelect={(id) => {
+                          prepare({
+                            action: "select",
+                            target: id,
+                          });
+                        }}
+                        suspended={workstationOpen}
+                        onInspect={inspect}
+                        onClear={clearSelection}
+                        selection={selection}
+                        rightInset={
+                          preparationView ||
+                          panelOpen ||
+                          sessionMode !== "explore"
+                            ? Math.min(innerWidth * 0.25, 360)
+                            : 0
+                        }
+                        guidanceTargets={
+                          exam || workstationOpen
+                            ? []
+                            : activeQuest?.targets || []
+                        }
+                        daily={daily}
+                        weekly={weeklyOpen ? weekly : undefined}
+                        onWeeklySelect={weeklyModelAction}
+                        practice={modelPractice}
+                        practiceTarget={
+                          selected === "overview" ? "" : practiceTarget
+                        }
+                        onPracticeSelect={practiceSelect}
+                        iseState={visibleIseState}
+                        doorState={visibleDoors}
+                        selected={selected}
+                        internal={visibleMainLid}
+                        labels={labels}
+                        request={request}
+                        onSelect={select}
+                        zoom={zoom}
+                        onReady={onReady}
+                        onError={onError}
+                        bottles={bottles}
+                        selectedSlot={selectedSlot}
+                        onSlot={selectSlot}
                       />
-                      {weeklyOpen ? (
-                        <WeeklyPanel
-                          w={weekly}
-                          bottles={bottles}
-                          onFocus={weeklyFocus}
-                          onComputer={() => setWorkstationOpen(true)}
-                        />
-                      ) : modelPractice &&
-                        !selectedSlot &&
-                        ![
-                          "ise-reagents",
-                          "ise-reference",
-                          "syringes",
-                          "rear-syringes",
-                          "console",
-                          "loader",
-                          "clean-solution",
-                          "analyzer",
-                        ].includes(selected) &&
-                        (selected !== "ise" || practiceTarget === "ISE") ? (
-                        <ModelPractice
-                          d={daily}
-                          target={practiceTarget}
-                          setTarget={practiceSelect}
-                          onComputer={() => setWorkstationOpen(true)}
-                          onClose={() => setModelPractice(false)}
-                        />
-                      ) : bottlePanel &&
-                        (selected === "r1" ||
-                          selected === "r2" ||
-                          selected === "sample" ||
-                          selected === "ise") ? (
-                        <DetergentPanel
-                          module={selected}
-                          selectedSlot={selectedSlot}
-                          bottles={bottles}
-                          mode={careMode}
-                          busy={bottleBusy}
-                          disabledReason={
-                            sessionMode === "explore" &&
-                            selected === "ise" &&
-                            !visibleDoors["ise-top-rear"]
-                              ? "請先開啟 ISE 後方黑色上蓋。"
-                              : daily.active &&
-                                  (selected === "ise"
-                                    ? !daily.instrument.iseTop
-                                    : !daily.instrument.mainLid)
-                                ? selected === "ise"
-                                  ? "請開啟 ISE 黑色上蓋並等待 ISE 停止。"
-                                  : "請先開啟分析單元主蓋。"
-                                : undefined
+                    )}
+                    <div
+                      className={`stage-caption ${selected !== "overview" ? "compact" : " "}`}
+                    >
+                      <span className="eyebrow">BECKMAN COULTER</span>
+                      <h2>{selected === "overview" ? "AU5800" : p.en}</h2>
+                      <p>
+                        {selected === "overview"
+                          ? "MODULAR CHEMISTRY ANALYZER"
+                          : `COMPONENT ${p.number} / UNIT EXPLORER`}
+                      </p>
+                    </div>
+                    <div className="view-tabs" aria-label="視角快捷鍵">
+                      {views.map((v) => (
+                        <button
+                          key={v.id}
+                          aria-pressed={activeView === v.id}
+                          className={activeView === v.id ? "active" : ""}
+                          onClick={() => {
+                            setActiveView(v.id);
+                            setRequest((r) => ({ ...v, serial: r.serial + 1 }));
+                          }}
+                        >
+                          {v.id === "front" ? (
+                            <Box size={14} />
+                          ) : v.id === "top" ? (
+                            <Layers3 size={14} />
+                          ) : (
+                            <Rotate3D size={14} />
+                          )}{" "}
+                          {v.label}
+                        </button>
+                      ))}
+                      <span />
+                      {(["ise", "r1", "r2", "sample"] as PartId[]).map((id) => (
+                        <button
+                          key={id}
+                          className={activeView === id ? "active" : ""}
+                          aria-pressed={activeView === id}
+                          onClick={() => select(id)}
+                        >
+                          {id === "sample" ? "樣品探針" : id.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="stage-tools">
+                      <button
+                        title="放大"
+                        aria-label="放大模型"
+                        onClick={() => setZoom((z) => z + 1)}
+                      >
+                        <Plus size={19} />
+                      </button>
+                      <button
+                        title="縮小"
+                        aria-label="縮小模型"
+                        onClick={() => setZoom((z) => z - 1)}
+                      >
+                        <Minus size={19} />
+                      </button>
+                      <span />
+                      <button
+                        title="重設視角"
+                        aria-label="重設視角"
+                        onClick={reset}
+                      >
+                        <RotateCcw size={17} />
+                      </button>
+                      <button
+                        title="全螢幕"
+                        aria-label="全螢幕"
+                        onClick={() =>
+                          void fullscreen().catch(() => setModal("help"))
+                        }
+                      >
+                        <Maximize2 size={17} />
+                      </button>
+                    </div>
+                    <div className="axis-indicator">
+                      <span className="axis-n">後</span>
+                      <div>
+                        <span>左</span>
+                        <Crosshair size={25} />
+                        <span>右</span>
+                      </div>
+                      <span>前</span>
+                    </div>
+                    <div className="stage-bottom">
+                      <div className="mouse-hint">
+                        <MousePointer2 size={14} />
+                        <span>拖曳旋轉</span>
+                        <span className="hint-divider" />
+                        <span>滾輪縮放</span>
+                      </div>
+                      <button
+                        className={`label-toggle ${labels ? "on" : ""}`}
+                        onClick={() => setLabels((v) => !v)}
+                        aria-pressed={labels}
+                      >
+                        <Tag size={14} />
+                        {labels ? "標籤開啟" : "標籤關閉"}
+                      </button>
+                    </div>
+                  </section>
+                  <div className="hud-rail">
+                    {sessionMode !== "explore" && (
+                      <QuestLog
+                        guidance={!exam}
+                        name={sessionMode === "daily" ? "日保養" : "周保養"}
+                        quests={quests}
+                        current={activeQuest?.id || ""}
+                        onChoose={setCurrentQuest}
+                        onLocate={locateTarget}
+                        onComputer={questComputer}
+                      />
+                    )}
+                    {!panelOpen && selected !== "overview" && (
+                      <button
+                        className="hud-restore"
+                        onClick={() => setPanelOpen(true)}
+                      >
+                        展開部件資訊
+                      </button>
+                    )}
+                    <aside
+                      hidden={!panelOpen}
+                      ref={detailPanel}
+                      className="detail-panel"
+                      aria-label="部件說明"
+                    >
+                      <header className="hud-card-header">
+                        <strong>部件資訊</strong>
+                        <div>
+                          <button
+                            aria-label="收合部件資訊"
+                            onClick={() => setPanelOpen(false)}
+                          >
+                            −
+                          </button>
+                          <button
+                            aria-label="取消選取"
+                            onClick={clearSelection}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </header>
+                      <nav className="hud-info-tabs">
+                        {(
+                          [
+                            ["info", "認識"],
+                            ["actions", "操作"],
+                            ["photo", "實機照片"],
+                          ] as const
+                        ).map(([id, name]) => (
+                          <button
+                            key={id}
+                            aria-pressed={panelTab === id}
+                            onClick={() => setPanelTab(id)}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </nav>
+                      <button className="hud-focus" onClick={() => focusPart()}>
+                        聚焦部件 · {p.name}
+                      </button>
+                      {panelTab !== "actions" ? (
+                        <PartInformation
+                          part={p}
+                          tab={panelTab}
+                          photoSelection={{
+                            targetId: selection?.weeklyId || selection?.dailyId,
+                            slotId: selectedSlot,
+                          }}
+                          detail={
+                            selection?.weeklyId ||
+                            selection?.dailyId ||
+                            (selectedSlot
+                              ? slotById[selectedSlot]?.label
+                              : undefined)
                           }
-                          message={bottleMessage}
-                          onMode={(mode) => {
-                            setCareMode(mode);
-                            setBottleMessage(
-                              "已切換配置；現有瓶子保留，請依需要手動更換。",
-                            );
-                          }}
-                          onSlot={selectSlot}
-                          onAction={operate}
-                          onBack={() => setBottlePanel(false)}
-                          onReset={() => {
-                            setBottles((old) =>
-                              Object.fromEntries(
-                                Object.entries(initialBottles()).map(
-                                  ([id, value]) => [
-                                    id,
-                                    (slotById[id].module === "sample") ===
-                                    (selected === "sample")
-                                      ? value
-                                      : old[id],
-                                  ],
-                                ),
-                              ),
-                            );
-                            setCareMode("daily");
-                            setBottleMessage(
-                              selected === "sample"
-                                ? "已重設 Sample 平日 4 瓶配置。"
-                                : "已重設平日 6 瓶配置。",
-                            );
-                          }}
+                          status={
+                            selectedSlot
+                              ? `目前液量 ${Math.round((bottles[selectedSlot]?.level || 0) * 100)}%`
+                              : `分析單元主蓋：${visibleMainLid ? "開啟" : "關閉"} · ISE module 鐵蓋：${visibleIseState.open ? "開啟" : "關閉"}`
+                          }
                         />
                       ) : (
-                        <>
-                          {(selected === "r1" ||
-                            selected === "r2" ||
-                            selected === "sample" ||
-                            selected === "ise") && (
-                            <button
-                              className="open-bottles"
-                              onClick={() => setBottlePanel(true)}
-                            >
-                              <FlaskConical size={16} />
-                              操作洗滌劑瓶與{" "}
-                              {selected === "ise"
-                                ? 2
-                                : selected === "sample"
-                                  ? 4
-                                  : 12}{" "}
-                              孔槽位
-                            </button>
-                          )}
-                          <div className="detail-header">
-                            <span className="eyebrow">COMPONENT GUIDE</span>
-                            <span>
-                              {p.number} <b>/ {parts.length - 1}</b>
-                            </span>
-                          </div>
-                          <div className="detail-title">
-                            <span className="component-icon">
-                              {selected === "overview" ? (
-                                <Box size={23} />
-                              ) : (
-                                <FlaskConical size={23} />
-                              )}
-                            </span>
-                            <h2>{p.name}</h2>
-                            <p>{p.en}</p>
-                          </div>
-                          <div className="detail-tags">
-                            {p.tags.map((t) => (
-                              <span key={t}>{t}</span>
-                            ))}
-                          </div>
-                          <p className="description" aria-live="polite">
-                            {p.description}
-                          </p>
-                          {(selected === "ise" ||
-                            (selected.startsWith("ise-") &&
-                              selected !== "ise-reagents" &&
-                              selected !== "ise-reference")) && (
-                            <IsePanel
-                              state={visibleIseState}
-                              onChange={(s) => {
-                                setIseState(s);
-                                if (weeklyOpen) weekly.setIseModule(s.open);
-                                else if (dailyCovers)
-                                  daily.setInstrument((old) => ({
-                                    ...old,
-                                    iseModule: s.open,
-                                  }));
-                              }}
-                              selected={selected}
-                              onSelect={select}
+                        <div className="hud-operation-content">
+                          <h3>{p.name}</h3>
+                          <ContextCovers
+                            disabledReason={
+                              weeklyOpen && weekly.busy
+                                ? "儀器運轉中，請等待本次程序完成。"
+                                : undefined
+                            }
+                            part={selected}
+                            door={selection?.doorId}
+                            mainOpen={visibleMainLid}
+                            moduleOpen={visibleIseState.open}
+                            doors={visibleDoors}
+                            main={toggleMainCover}
+                            module={toggleModuleCover}
+                            toggle={toggleDoor}
+                          />
+                          {weeklyOpen ? (
+                            <WeeklyPanel
+                              w={weekly}
+                              bottles={bottles}
+                              onFocus={weeklyFocus}
+                              onComputer={() => setWorkstationOpen(true)}
                             />
-                          )}
-                          {daily.active &&
-                            [
-                              "syringes",
-                              "rear-syringes",
+                          ) : modelPractice &&
+                            !selectedSlot &&
+                            ![
                               "ise-reagents",
                               "ise-reference",
-                            ].includes(selected) && (
-                              <DailyTasksPanel
-                                guidance={!assessment}
-                                section={
-                                  selected.includes("syringes")
-                                    ? "syringes"
-                                    : "ise"
-                                }
-                                tasks={daily.tasks}
-                                instrument={daily.instrument}
-                                bottles={bottles}
-                                command={(c) =>
-                                  setBottleMessage(daily.taskAction(c))
-                                }
-                                cover={(id, open) =>
-                                  daily.setInstrument((s) => ({
-                                    ...s,
-                                    [id]: open,
-                                  }))
-                                }
-                                refill={(id) =>
-                                  setBottleMessage(daily.refill(id))
-                                }
-                                focus={(id) => select(id as PartId)}
-                              />
-                            )}
-                          {bottleMessage && daily.active && (
-                            <p role="status">{bottleMessage}</p>
-                          )}
-                          {selected === "syringes" && !daily.active && (
-                            <SyringePanel
-                              checks={syringeChecks}
-                              setChecks={setSyringeChecks}
+                              "syringes",
+                              "rear-syringes",
+                              "console",
+                              "loader",
+                              "clean-solution",
+                              "analyzer",
+                            ].includes(selected) &&
+                            (selected !== "ise" || practiceTarget === "ISE") ? (
+                            <ModelPractice
+                              d={daily}
+                              target={practiceTarget}
+                              setTarget={practiceSelect}
+                              onComputer={() => setWorkstationOpen(true)}
+                              onClose={() => setModelPractice(false)}
                             />
-                          )}
-                          {selected === "rear-syringes" && !daily.active && (
-                            <button
-                              onClick={() =>
-                                setDoorState((s) => ({
-                                  ...s,
-                                  [selected === "rear-syringes"
-                                    ? "syringe-rear"
-                                    : "syringe-front"]:
-                                    !s[
-                                      selected === "rear-syringes"
-                                        ? "syringe-rear"
-                                        : "syringe-front"
-                                    ],
-                                }))
+                          ) : bottlePanel &&
+                            (selected === "r1" ||
+                              selected === "r2" ||
+                              selected === "sample" ||
+                              selected === "ise") ? (
+                            <DetergentPanel
+                              module={selected}
+                              selectedSlot={selectedSlot}
+                              bottles={bottles}
+                              mode={careMode}
+                              busy={bottleBusy}
+                              disabledReason={
+                                sessionMode === "explore" &&
+                                selected === "ise" &&
+                                !visibleDoors["ise-top-rear"]
+                                  ? "請先開啟 ISE 後方黑色上蓋。"
+                                  : daily.active &&
+                                      (selected === "ise"
+                                        ? !daily.instrument.iseTop
+                                        : !daily.instrument.mainLid)
+                                    ? selected === "ise"
+                                      ? "請開啟 ISE 黑色上蓋並等待 ISE 停止。"
+                                      : "請先開啟分析單元主蓋。"
+                                    : undefined
                               }
-                            >
-                              開關 syringe 櫃門
-                            </button>
-                          )}
-                          <div className="photo-heading">
-                            <span>
-                              {selected.startsWith("ise-") &&
-                              selected !== "ise-reagents" &&
-                              selected !== "ise-reference"
-                                ? "ISE 位置參考（非部件特寫）"
-                                : selected === "syringes"
-                                  ? "整機櫃體位置參考（非注射器特寫）"
-                                  : "實機對照"}
-                            </span>
-                            <span>REFERENCE PHOTO</span>
-                          </div>
-                          <button
-                            className="reference-photo"
-                            onClick={() => setModal("photo")}
-                            aria-label="放大實機照片"
-                          >
-                            <img
-                              src={asset(photo)}
-                              alt={`${p.name}實機參考照片`}
+                              message={bottleMessage}
+                              onMode={(mode) => {
+                                setCareMode(mode);
+                                setBottleMessage(
+                                  "已切換配置；現有瓶子保留，請依需要手動更換。",
+                                );
+                              }}
+                              onSlot={selectSlot}
+                              onAction={operate}
+                              onBack={() => setBottlePanel(false)}
+                              onReset={() => {
+                                setBottles((old) =>
+                                  Object.fromEntries(
+                                    Object.entries(initialBottles()).map(
+                                      ([id, value]) => [
+                                        id,
+                                        (slotById[id].module === "sample") ===
+                                        (selected === "sample")
+                                          ? value
+                                          : old[id],
+                                      ],
+                                    ),
+                                  ),
+                                );
+                                setCareMode("daily");
+                                setBottleMessage(
+                                  selected === "sample"
+                                    ? "已重設 Sample 平日 4 瓶配置。"
+                                    : "已重設平日 6 瓶配置。",
+                                );
+                              }}
                             />
-                            <span>
-                              <Expand size={14} />
-                            </span>
-                          </button>
-                          {photos.length > 1 && (
-                            <div
-                              className="photo-pagination"
-                              aria-label="參考照片切換"
-                            >
-                              {photos.map((name, i) => (
+                          ) : (
+                            <>
+                              {(selected === "r1" ||
+                                selected === "r2" ||
+                                selected === "sample" ||
+                                selected === "ise") && (
                                 <button
-                                  key={name}
-                                  aria-label={`切換參考照片 ${i + 1}`}
-                                  aria-pressed={i === photoIndex}
-                                  onClick={() => setPhotoIndex(i)}
+                                  className="open-bottles"
+                                  onClick={() => setBottlePanel(true)}
                                 >
-                                  {i + 1}
+                                  <FlaskConical size={16} />
+                                  操作洗滌劑瓶與{" "}
+                                  {selected === "ise"
+                                    ? 2
+                                    : selected === "sample"
+                                      ? 4
+                                      : 12}{" "}
+                                  孔槽位
                                 </button>
-                              ))}
-                              <span>
-                                {photoIndex + 1} / {photos.length}
-                              </span>
-                            </div>
+                              )}
+                              <div className="detail-header">
+                                <span className="eyebrow">COMPONENT GUIDE</span>
+                                <span>
+                                  {p.number} <b>/ {parts.length - 1}</b>
+                                </span>
+                              </div>
+                              <div className="detail-title">
+                                <span className="component-icon">
+                                  {selected === "overview" ? (
+                                    <Box size={23} />
+                                  ) : (
+                                    <FlaskConical size={23} />
+                                  )}
+                                </span>
+                                <h2>{p.name}</h2>
+                                <p>{p.en}</p>
+                              </div>
+                              <div className="detail-tags">
+                                {p.tags.map((t) => (
+                                  <span key={t}>{t}</span>
+                                ))}
+                              </div>
+                              <p className="description" aria-live="polite">
+                                {p.description}
+                              </p>
+                              {(selected === "ise" ||
+                                (selected.startsWith("ise-") &&
+                                  selected !== "ise-reagents" &&
+                                  selected !== "ise-reference")) && (
+                                <IsePanel
+                                  state={visibleIseState}
+                                  onChange={(s) => {
+                                    setIseState(s);
+                                    if (weeklyOpen) weekly.setIseModule(s.open);
+                                    else if (dailyCovers)
+                                      daily.setInstrument((old) => ({
+                                        ...old,
+                                        iseModule: s.open,
+                                      }));
+                                  }}
+                                  selected={selected}
+                                  onSelect={select}
+                                />
+                              )}
+                              {daily.active &&
+                                [
+                                  "syringes",
+                                  "rear-syringes",
+                                  "ise-reagents",
+                                  "ise-reference",
+                                ].includes(selected) && (
+                                  <DailyTasksPanel
+                                    guidance={!exam}
+                                    section={
+                                      selected.includes("syringes")
+                                        ? "syringes"
+                                        : "ise"
+                                    }
+                                    tasks={daily.tasks}
+                                    instrument={daily.instrument}
+                                    bottles={bottles}
+                                    command={(c) =>
+                                      setBottleMessage(daily.taskAction(c))
+                                    }
+                                    cover={(id, open) =>
+                                      daily.setInstrument((s) => ({
+                                        ...s,
+                                        [id]: open,
+                                      }))
+                                    }
+                                    refill={(id) =>
+                                      setBottleMessage(daily.refill(id))
+                                    }
+                                    focus={(id) => select(id as PartId)}
+                                  />
+                                )}
+                              {bottleMessage && daily.active && (
+                                <p role="status">{bottleMessage}</p>
+                              )}
+                              {selected === "syringes" && !daily.active && (
+                                <SyringePanel
+                                  checks={syringeChecks}
+                                  setChecks={setSyringeChecks}
+                                />
+                              )}
+                              {selected === "rear-syringes" &&
+                                !daily.active && (
+                                  <button
+                                    onClick={() =>
+                                      setDoorState((s) => ({
+                                        ...s,
+                                        [selected === "rear-syringes"
+                                          ? "syringe-rear"
+                                          : "syringe-front"]:
+                                          !s[
+                                            selected === "rear-syringes"
+                                              ? "syringe-rear"
+                                              : "syringe-front"
+                                          ],
+                                      }))
+                                    }
+                                  >
+                                    開關 syringe 櫃門
+                                  </button>
+                                )}
+                              <div className="photo-heading">
+                                <span>
+                                  {selected.startsWith("ise-") &&
+                                  selected !== "ise-reagents" &&
+                                  selected !== "ise-reference"
+                                    ? "ISE 位置參考（非部件特寫）"
+                                    : selected === "syringes"
+                                      ? "整機櫃體位置參考（非注射器特寫）"
+                                      : "實機對照"}
+                                </span>
+                                <span>REFERENCE PHOTO</span>
+                              </div>
+                              <button
+                                className="reference-photo"
+                                onClick={() => setModal("photo")}
+                                aria-label="放大實機照片"
+                              >
+                                <img
+                                  src={asset(photo)}
+                                  alt={`${p.name}實機參考照片`}
+                                />
+                                <span>
+                                  <Expand size={14} />
+                                </span>
+                              </button>
+                              {photos.length > 1 && (
+                                <div
+                                  className="photo-pagination"
+                                  aria-label="參考照片切換"
+                                >
+                                  {photos.map((name, i) => (
+                                    <button
+                                      key={name}
+                                      aria-label={`切換參考照片 ${i + 1}`}
+                                      aria-pressed={i === photoIndex}
+                                      onClick={() => setPhotoIndex(i)}
+                                    >
+                                      {i + 1}
+                                    </button>
+                                  ))}
+                                  <span>
+                                    {photoIndex + 1} / {photos.length}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="reference-credit">
+                                <span />
+                                <span>檢驗科生化組提供</span>
+                              </div>
+                              <button
+                                className="source-link"
+                                onClick={() => setModal("sources")}
+                              >
+                                <BookOpen size={16} />
+                                <div>
+                                  <span>操作手冊 · 第 4 版</span>
+                                  <strong>參考頁碼 {p.pages}</strong>
+                                </div>
+                                <ChevronRight size={15} />
+                              </button>
+                              <div className="detail-tip">
+                                <MousePointer2 size={15} />
+                                <p>
+                                  點選左側模組或模型上的部件，
+                                  <br />
+                                  查看對應位置與實機照片。
+                                </p>
+                              </div>
+                              <div className="detail-navigation">
+                                <button
+                                  aria-label="上一個部件"
+                                  onClick={() =>
+                                    select(
+                                      parts[
+                                        (currentIndex + parts.length - 1) %
+                                          parts.length
+                                      ].id,
+                                    )
+                                  }
+                                >
+                                  <ArrowLeft size={16} />
+                                </button>
+                                <span>探索下一個部件</span>
+                                <button
+                                  aria-label="下一個部件"
+                                  onClick={() =>
+                                    select(
+                                      parts[(currentIndex + 1) % parts.length]
+                                        .id,
+                                    )
+                                  }
+                                >
+                                  <ArrowRight size={16} />
+                                </button>
+                              </div>
+                            </>
                           )}
-                          <div className="reference-credit">
-                            <span />
-                            <span>檢驗科生化組提供</span>
-                          </div>
-                          <button
-                            className="source-link"
-                            onClick={() => setModal("sources")}
-                          >
-                            <BookOpen size={16} />
-                            <div>
-                              <span>操作手冊 · 第 4 版</span>
-                              <strong>參考頁碼 {p.pages}</strong>
-                            </div>
-                            <ChevronRight size={15} />
-                          </button>
-                          <div className="detail-tip">
-                            <MousePointer2 size={15} />
-                            <p>
-                              點選左側模組或模型上的部件，
-                              <br />
-                              查看對應位置與實機照片。
-                            </p>
-                          </div>
-                          <div className="detail-navigation">
-                            <button
-                              aria-label="上一個部件"
-                              onClick={() =>
-                                select(
-                                  parts[
-                                    (currentIndex + parts.length - 1) %
-                                      parts.length
-                                  ].id,
-                                )
-                              }
-                            >
-                              <ArrowLeft size={16} />
-                            </button>
-                            <span>探索下一個部件</span>
-                            <button
-                              aria-label="下一個部件"
-                              onClick={() =>
-                                select(
-                                  parts[(currentIndex + 1) % parts.length].id,
-                                )
-                              }
-                            >
-                              <ArrowRight size={16} />
-                            </button>
-                          </div>
-                        </>
+                        </div>
                       )}
-                    </div>
-                  )}
-                </aside>
-              </div>
-            </div>
-            <footer className="page-footer">
-              <span>
-                <span className="footer-dot" />
-                教學示意模型 · 細部比例依照片估算
-              </span>
-              <span>
-                AU5800 LEARNING LAB <b>v0.9</b>
-              </span>
-            </footer>
-          </main>
+                    </aside>
+                  </div>
+                </div>
+                <footer className="page-footer">
+                  <span>
+                    <span className="footer-dot" />
+                    教學示意模型 · 細部比例依照片估算
+                  </span>
+                  <span>
+                    AU5800 LEARNING LAB <b>v0.9</b>
+                  </span>
+                </footer>
+              </main>
+            </>
+          )}
         </div>
         <dialog
           ref={dialog}
@@ -1754,10 +1807,10 @@ export default function SimulatorWorkspace({
             </>
           )}
         </dialog>
-        {preparationView && !examSceneActive && (
+        {preparationView && !sceneActive && (
           <div hidden={workstationOpen}>
             <PreparationPanel
-              exam={!!assessment}
+              exam={exam}
               disabled={workstationOpen || assessment?.disabled}
               state={preparationState}
               gate={preparationAccess}
@@ -1785,8 +1838,9 @@ export default function SimulatorWorkspace({
             assessment={assessment?.actions}
             sessionStatus={assessment?.status}
             sessionControls={assessment?.controls}
+            sessionFeedback={assessment?.feedback}
             key={`${mode}-${workstationEpoch[mode]}`}
-            active={sessionMode === mode}
+            active={sessionMode === mode && !sceneActive}
             weekly={mode === "weekly" ? weekly : undefined}
             bottles={
               mode === "daily"
@@ -1835,12 +1889,12 @@ export default function SimulatorWorkspace({
             dailyRequest={workstationNavigation[mode]?.serial || 0}
             requestedRoute={workstationNavigation[mode]?.route || ""}
             guidance={
-              !assessment && workstationOpen && sessionMode === mode
+              !exam && workstationOpen && sessionMode === mode
                 ? activeQuest?.label
                 : undefined
             }
             guideControls={
-              !assessment && sessionMode === mode ? activeQuest?.controls : []
+              !exam && sessionMode === mode ? activeQuest?.controls : []
             }
             open={workstationOpen && sessionMode === mode}
             onExit={() => {
@@ -1854,21 +1908,41 @@ export default function SimulatorWorkspace({
           onStart={startTask}
           initialKind={sessionMode === "weekly" ? "weekly" : "daily"}
           hasDraft={(kind) =>
-            kind === "daily"
-              ? dailySession.active
-              : kind === "weekly"
-                ? weekly.active
-                : trouble.active
+            PracticePortal && (kind === "daily" || kind === "troubleshooting")
+              ? savedPracticeKinds.includes(kind)
+              : kind === "daily"
+                ? dailySession.active
+                : kind === "weekly"
+                  ? weekly.active
+                  : trouble.active
           }
         />
         {AccountPortal && (
           <AccountPortal
+            onPractice={(kind) => {
+              setExamOpen(false);
+              setPersistentKind(kind);
+              setPersistentRestart(false);
+              setPracticeOpen(true);
+            }}
             open={examOpen}
             requestedKind={requestedExam}
             onSceneActive={setExamSceneActive}
             onClose={() => {
               pendingPractice.current = null;
               setExamOpen(false);
+            }}
+          />
+        )}
+        {PracticePortal && (
+          <PracticePortal
+            open={practiceOpen}
+            kind={persistentKind}
+            restart={persistentRestart}
+            onSceneActive={setExamSceneActive}
+            onClose={() => {
+              setPracticeOpen(false);
+              setExamSceneActive(false);
             }}
           />
         )}

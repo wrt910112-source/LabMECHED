@@ -141,7 +141,7 @@ export default function PreparationPanel({
       data-exam={exam}
       data-free-simulation={freeSimulation}
       data-phase={phase}
-      data-saving={busy}
+      data-saving={localBusy}
     >
       <nav className="prep-top hud-card" aria-label="備料工作區">
         <strong>
@@ -306,7 +306,14 @@ export default function PreparationPanel({
         </section>
         <section className="hud-card prep-controls" aria-label="備料情境操作">
           <h3>
-            操作中 <small>{busy ? "保存中…" : "E · 目前操作"}</small>
+            操作中{" "}
+            <small>
+              {localBusy
+                ? "保存中…"
+                : disabled
+                  ? "目前為唯讀狀態"
+                  : "E · 目前操作"}
+            </small>
           </h3>
           <p className="prep-cup-status" role="status" aria-live="polite">
             目前選取：杯 {state.cups.findIndex((c) => c.id === cupId) + 1}

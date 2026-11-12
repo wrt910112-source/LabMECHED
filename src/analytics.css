@@ -1,0 +1,216 @@
+.learning-analytics {
+  max-width: 1480px;
+  margin: auto;
+}
+.analytics-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+  align-items: end;
+}
+.analytics-filters label {
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch !important;
+  gap: 6px;
+}
+.analytics-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.analytics-stats article,
+.analytics-trends article {
+  border: 1px solid #476777;
+  border-radius: 8px;
+  padding: 16px;
+  background: #142b39;
+}
+.analytics-stats strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 8px;
+}
+.analytics-table {
+  overflow: auto;
+  max-height: 520px;
+  border: 1px solid #426574;
+  margin: 16px 0;
+  border-radius: 6px;
+}
+.analytics-table table {
+  border-collapse: collapse;
+  min-width: 800px;
+  width: 100%;
+}
+.analytics-table th {
+  position: sticky;
+  top: 0;
+  background: #18394b;
+  z-index: 1;
+}
+.analytics-table td,
+.analytics-table th {
+  padding: 10px;
+  border-bottom: 1px solid #395565;
+  text-align: left;
+  vertical-align: top;
+}
+.analytics-table small {
+  display: block;
+  min-width: 120px;
+}
+.analytics-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 20px 0;
+}
+.analytics-trends {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+.analytics-trends svg {
+  width: 100%;
+  color: #abc6d5;
+  font-size: 9px;
+}
+.analytics-error-tag {
+  display: inline-block;
+  background: #3b3847;
+  border: 1px solid #806575;
+  margin: 4px;
+  padding: 7px 12px;
+  border-radius: 6px;
+}
+.analytics-note {
+  color: #b5cbd6;
+}
+.analytics-heatmap th:not(:first-child) {
+  min-width: 105px;
+  max-width: 145px;
+  font-size: 12px;
+}
+.analytics-heatmap [data-level="none"] {
+  background: #31424e;
+}
+.analytics-heatmap [data-level="clear"] {
+  background: #275b54;
+}
+.analytics-heatmap [data-level="some"] {
+  background: #725334;
+}
+.analytics-heatmap [data-level="high"] {
+  background: #8b3f49;
+}
+.analytics-detail {
+  max-width: 1200px;
+  width: 95vw;
+  max-height: 92dvh;
+  background: #152d3c;
+  color: #dcecf3;
+  border: 1px solid #658698;
+  padding: 24px;
+}
+.analytics-detail::backdrop {
+  background: #07121ac9;
+}
+.analytics-detail header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+.analytics-detail button {
+  padding: 10px 14px;
+  background: #25495a;
+  color: #e2f0f4;
+  border: 1px solid #7ba2b5;
+  border-radius: 6px;
+}
+.practice-portal {
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  background: #15232d;
+  color: #e2edf2;
+  overflow: hidden;
+}
+.practice-portal:not([open]) {
+  display: none;
+}
+.persistent-practice-room {
+  height: 100dvh;
+}
+.practice-session-bar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 110;
+  min-height: 40px;
+  padding: 8px 18px;
+  display: flex;
+  gap: 12px;
+  background: #142d3e;
+  align-items: center;
+}
+.persistent-practice-room:has(.trouble-room) .trouble-room {
+  top: 46px;
+}
+.training-time-note {
+  position: fixed;
+  left: 18px;
+  bottom: 8px;
+  z-index: 39;
+  max-width: calc(100vw - 40px);
+  margin: 0;
+  color: #b6cdd8;
+  font-size: 10px;
+  background: #132c3dda;
+  padding: 5px 10px;
+  border-radius: 5px;
+  pointer-events: none;
+}
+.training-loading {
+  padding: 48px;
+}
+.practice-portal .ws-session-hud > span {
+  overflow: visible;
+}
+
+/* Keep dashboard tables readable inside the existing exam theme. */
+.exam-portal .learning-analytics .analytics-table table,
+.exam-portal .learning-analytics .analytics-table td,
+.analytics-detail .analytics-table td {
+  background: #142d3c;
+  color: #deedf5;
+}
+.exam-portal .learning-analytics .analytics-table th,
+.analytics-detail .analytics-table th {
+  background: #234a5f;
+  color: #eff8fc;
+}
+.learning-analytics .analytics-stats small,
+.learning-analytics .analytics-table small {
+  color: #adc8d7;
+}
+.exam-portal .learning-analytics .analytics-heatmap [data-level="none"] {
+  background: #31424e;
+}
+.exam-portal .learning-analytics .analytics-heatmap [data-level="clear"] {
+  background: #275b54;
+}
+.exam-portal .learning-analytics .analytics-heatmap [data-level="some"] {
+  background: #725334;
+}
+.exam-portal .learning-analytics .analytics-heatmap [data-level="high"] {
+  background: #8b3f49;
+}

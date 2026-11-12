@@ -1,3 +1,7 @@
+import {
+  startSimulationTiming,
+  observeSimulationTiming,
+} from "./simulation-time.mjs";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
@@ -9,6 +13,7 @@ import {
   advanceEngine,
   applyCommand,
   scoreAttempt,
+  attemptChecks,
   attemptProgress,
   versionForKind,
   supportsVersion,
@@ -17,6 +22,9 @@ import {
 
 import { migrateDatabase } from "./database.mjs";
 import { databasePath } from "./config.mjs";
+import { createTrainingService } from "./training.mjs";
+import { createAnalyticsService } from "./analytics.mjs";
+import { diagnoseEvent } from "../shared/training.ts";
 import {
   createAccountService,
   verifyPassword,
@@ -48,6 +56,7 @@ async function bodyOf(req) {
 export function createApplication({
   dbPath = databasePath(),
   staticRoot = resolve(root, "dist"),
+  trainingClock = Date.now,
 } = {}) {
   if (dbPath !== ":memory:")
     mkdirSync(dirname(resolve(dbPath)), { recursive: true });
@@ -55,6 +64,8 @@ export function createApplication({
   const migration = migrateDatabase(db, dbPath);
   db.exec("PRAGMA journal_mode=WAL;");
   const accounts = createAccountService(db);
+  const training = createTrainingService(db, accounts, trainingClock);
+  const analytics = createAnalyticsService(db, training);
   const publicUser = accounts.view;
   const loginFailures = new Map();
   const eventsFor = (id) =>
@@ -69,6 +80,7 @@ export function createApplication({
         accepted: !!row.accepted,
         label: row.label,
         error: row.error,
+        diagnostic: row.diagnostic ? JSON.parse(row.diagnostic) : null,
       }));
   function loaded(row, now = Date.now()) {
     if (!row) throw httpError(404, "找不到考試紀錄。");
@@ -76,7 +88,7 @@ export function createApplication({
     if (row.status === "active" && isTaskOpen(row.kind)) {
       if (!supportsVersion(row.kind, row.version))
         throw httpError(409, "這次考試的版本無法繼續，請放棄後重新開始。");
-      state = advanceEngine(state, now);
+      state = observeSimulationTiming(advanceEngine(state, now), now);
       db.prepare(
         "UPDATE attempts SET state=? WHERE id=? AND status='active'",
       ).run(JSON.stringify(state), row.id);
@@ -110,8 +122,18 @@ export function createApplication({
         row.version,
       ),
       result: row.result ? JSON.parse(row.result) : null,
+      timing: training.timing("exam", row.id),
     };
-    if (detailed && row.status !== "active") attempt.events = eventsFor(row.id);
+    if (detailed && row.status !== "active") {
+      attempt.events = eventsFor(row.id);
+      if (row.status === "abandoned")
+        attempt.checks = attemptChecks(
+          row.kind,
+          state,
+          attempt.events,
+          row.version,
+        );
+    }
     return attempt;
   }
   function findAttempt(id, user) {
@@ -256,8 +278,16 @@ export function createApplication({
         );
       if (path === "/api/auth/register") {
         if (req.method !== "POST") throw httpError(405, "不支援此方法。");
-        await accounts.register({ req, bodyOf, send, issueSession: (id) => issueSession(res, id) });
-        if (process.env.RENDER === "true") console.info(JSON.stringify({ event: "registration_created", status: 201 }));
+        await accounts.register({
+          req,
+          bodyOf,
+          send,
+          issueSession: (id) => issueSession(res, id),
+        });
+        if (process.env.RENDER === "true")
+          console.info(
+            JSON.stringify({ event: "registration_created", status: 201 }),
+          );
         return;
       }
       if (path === "/api/auth/login" && req.method === "POST") {
@@ -295,6 +325,7 @@ export function createApplication({
       }
       const user = sessionUser(req);
       if (path === "/api/auth/logout" && req.method === "POST") {
+        training.pauseUser(user.id);
         const token = req.headers.cookie
           .split(";")
           .map((x) => x.trim())
@@ -319,6 +350,8 @@ export function createApplication({
         })
       )
         return;
+      if (await training.handle({ path, req, user, bodyOf, send })) return;
+      if (await analytics.handle({ path, req, user, url, send, res })) return;
       if (path.startsWith("/api/admin/")) {
         if (user.role !== "administrator")
           throw httpError(403, "此功能僅限管理員使用。");
@@ -419,7 +452,10 @@ export function createApplication({
           throw httpError(409, "請先交卷或放棄目前考試。");
         const id = randomUUID(),
           now = Date.now(),
-          state = initialEngine(versionForKind(body.kind));
+          state = startSimulationTiming(
+            initialEngine(versionForKind(body.kind)),
+            now,
+          );
         const rubric = scoreAttempt(body.kind, state, [], now, now).groups.map(
           (g) => ({
             id: g.id,
@@ -456,6 +492,9 @@ export function createApplication({
             ? accounts.profileFor(user.id).version
             : null,
         );
+        db.prepare(
+          "UPDATE attempts SET analytics_participant=? WHERE id=?",
+        ).run(Number(user.role === "learner"), id);
         send(201, {
           attempt: attemptView(
             db.prepare("SELECT * FROM attempts WHERE id=?").get(id),
@@ -513,20 +552,25 @@ export function createApplication({
             });
             return;
           }
+          training.assertLease(req, user, "exam", row.id);
           if (row.status !== "active")
             throw httpError(409, "考試已結束，不能再修改。");
           if (body.revision !== row.revision)
             throw httpError(409, "考試已在其他畫面更新，請重新載入目前紀錄。");
+          const before = loaded(row, now);
           const outcome = applyCommand(
-            loaded(row, now),
+            before,
             row.kind,
             body.command,
             now,
             row.version,
           );
+          observeSimulationTiming(outcome.state, now);
           db.exec("BEGIN IMMEDIATE");
           try {
-            db.prepare("INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?)").run(
+            db.prepare(
+              "INSERT INTO events(id,attempt_id,seq,at,source,command,accepted,label,error,diagnostic) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            ).run(
               body.id,
               row.id,
               row.revision + 1,
@@ -536,6 +580,15 @@ export function createApplication({
               Number(outcome.accepted),
               outcome.label,
               outcome.error,
+              JSON.stringify(
+                diagnoseEvent(
+                  row.kind,
+                  before,
+                  body.command,
+                  outcome,
+                  row.version,
+                ),
+              ),
             );
             db.prepare(
               "UPDATE attempts SET state=?,revision=revision+1 WHERE id=?",
@@ -561,10 +614,11 @@ export function createApplication({
             send(200, { attempt: attemptView(row, true) });
             return;
           }
+          training.assertLease(req, user, "exam", row.id);
           if (row.status !== "active") throw httpError(409, "此考試已放棄。");
           if (body.revision !== row.revision)
             throw httpError(409, "考試已更新，請重新載入再交卷。");
-          const state = loaded(row, now),
+          const state = observeSimulationTiming(loaded(row, now), now, true),
             result = scoreAttempt(
               row.kind,
               state,
@@ -593,6 +647,7 @@ export function createApplication({
           db.prepare(
             "UPDATE attempts SET state=?,result=?,status='submitted',submitted_at=? WHERE id=?",
           ).run(JSON.stringify(state), JSON.stringify(result), now, row.id);
+          training.pauseUser(user.id);
           send(200, {
             attempt: attemptView(
               db.prepare("SELECT * FROM attempts WHERE id=?").get(row.id),
@@ -602,25 +657,60 @@ export function createApplication({
           return;
         }
         if (operation === "abandon") {
+          if (row.status === "abandoned") {
+            send(200, { attempt: attemptView(row, true) });
+            return;
+          }
+          training.assertLease(req, user, "exam", row.id);
           if (row.status === "submitted")
             throw httpError(409, "已交卷紀錄不能放棄。");
+          const state = observeSimulationTiming(
+            JSON.parse(row.state),
+            now,
+            true,
+          );
           db.prepare(
-            "UPDATE attempts SET status='abandoned',submitted_at=? WHERE id=? AND status='active'",
-          ).run(now, row.id);
+            "UPDATE attempts SET status='abandoned',submitted_at=?,state=? WHERE id=? AND status='active'",
+          ).run(now, JSON.stringify(state), row.id);
+          training.pauseUser(user.id);
           send(200, { ok: true });
           return;
         }
       }
       throw httpError(404, "找不到此功能。");
     } catch (error) {
-      if (process.env.RENDER === "true" && req.url?.split("?")[0] === "/api/auth/register")
-        console.warn(JSON.stringify({ event: "registration_rejected", status: error.status || 500 }));
-      if (error.retryAfter) res.setHeader("Retry-After", String(error.retryAfter));
+      if (
+        process.env.RENDER === "true" &&
+        req.url?.split("?")[0] === "/api/auth/register"
+      )
+        console.warn(
+          JSON.stringify({
+            event: "registration_rejected",
+            status: error.status || 500,
+          }),
+        );
+      if (
+        process.env.RENDER === "true" &&
+        /^\/api\/(practice-sessions|training)(\/|$)/.test(
+          req.url?.split("?")[0] || "",
+        )
+      )
+        console.warn(
+          JSON.stringify({
+            event: error.reason || "training_request_rejected",
+            status: error.status || 500,
+          }),
+        );
+      if (error.retryAfter)
+        res.setHeader("Retry-After", String(error.retryAfter));
       if (!error.status) console.error("API error:", error);
       send(
         error.status || 500,
         error.status
-          ? { message: error.message }
+          ? {
+              message: error.message,
+              ...(error.reason ? { reason: error.reason } : {}),
+            }
           : { message: "資料尚未保存，伺服器發生錯誤。" },
       );
     }
