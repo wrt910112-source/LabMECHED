@@ -166,7 +166,7 @@ test("generated credentials, profile validation, ownership, frozen snapshots and
     const started = await learner("/attempts", "POST", { kind: "daily" });
     assert.equal(started.status, 201);
     const a = started.body.attempt;
-    assert.equal(a.version, "AU5800-2026-10-28-v6");
+    assert.equal(a.version, "AU5800-2026-11-12-v7");
     assert.equal(a.backgroundVersion, backgroundVersion);
     assert.equal(a.backgroundSnapshot.clinicalMonths, 18);
     await f.admin(`/admin/users/${u.id}`, "PATCH", { cohortId: null });

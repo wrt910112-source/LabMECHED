@@ -2411,6 +2411,7 @@ function CalibrationControls({
           iseModule: s.lid,
         },
         iseReady: true,
+        unrestricted: false,
         canCalibrate: true,
         cleanCup: s.cup,
         drops: s.drops,

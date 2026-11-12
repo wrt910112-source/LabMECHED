@@ -336,6 +336,7 @@ function PracticeRoom({
     dispatch,
     blocked,
     () => void restartRound(),
+    true,
   );
   const saveStatus = (
     <span>
@@ -451,7 +452,7 @@ function PracticeRoom({
         </>
       )}
       <p className="training-time-note">
-        本輪有效時間{" "}
+        本輪有效練習時間{" "}
         {Math.floor(
           Math.max(
             activity.timing?.activeMs ?? 0,
@@ -467,8 +468,7 @@ function PracticeRoom({
             60000) /
             1000,
         )}{" "}
-        秒 · 有效時間於背景頁面或閒置 2
-        分鐘後暫停；為活動估計，不代表真實專注程度。
+        秒
       </p>
     </section>
   );

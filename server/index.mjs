@@ -18,6 +18,7 @@ import {
   versionForKind,
   supportsVersion,
   examPreparationGate,
+  isUnrestrictedDailyExam,
 } from "../shared/exam.ts";
 
 import { migrateDatabase } from "./database.mjs";
@@ -547,7 +548,10 @@ export function createApplication({
               throw httpError(409, "操作識別碼已被使用。");
             send(200, {
               attempt: attemptView(row),
-              applied: !!previous.accepted && !previous.error,
+              applied:
+                !!previous.accepted &&
+                (isUnrestrictedDailyExam(JSON.parse(row.state), row.version) ||
+                  !previous.error),
               message: previous.accepted ? "操作已保存。" : "操作未執行。",
             });
             return;
@@ -602,7 +606,10 @@ export function createApplication({
             attempt: attemptView(
               db.prepare("SELECT * FROM attempts WHERE id=?").get(row.id),
             ),
-            applied: outcome.accepted && !outcome.error,
+            applied:
+              outcome.accepted &&
+              (isUnrestrictedDailyExam(outcome.state, row.version) ||
+                !outcome.error),
             message:
               outcome.message ||
               (outcome.accepted ? "操作已保存。" : "操作未執行。"),

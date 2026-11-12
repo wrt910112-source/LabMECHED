@@ -123,7 +123,7 @@ export function ModelPractice({
           <button onClick={onComputer}>到工作站設定 DIAG</button>
           <button
             disabled={
-              !d.iseDiag.ran ||
+              (!d.unrestricted && !d.iseDiag.ran) ||
               !d.instrument.iseMaintenance ||
               d.instrument.iseModule
             }
@@ -133,7 +133,7 @@ export function ModelPractice({
           </button>
           <button
             disabled={
-              !d.iseDiag.ran ||
+              (!d.unrestricted && !d.iseDiag.ran) ||
               !d.instrument.iseMaintenance ||
               d.instrument.iseModule
             }

@@ -3,23 +3,37 @@ import type { RackSelection } from "../src/requisitionData.ts";
 export const legacyDailyV3 = "AU5800-2026-10-21-v3";
 export const legacyDailyV4 = "AU5800-2026-10-22-v4";
 export const legacyDailyV5 = "AU5800-2026-10-27-v5";
-export const currentDailyVersion = "AU5800-2026-10-28-v6";
-export const hasPreparation = (version: string) =>
+export const legacyDailyV6 = "AU5800-2026-10-28-v6";
+export const currentDailyVersion = "AU5800-2026-11-12-v7";
+export const hasUnrestrictedDailyExam = (version: string) =>
   version === currentDailyVersion;
+export const hasPreparation = (version: string) =>
+  [legacyDailyV6, currentDailyVersion].includes(version);
 export const legacyWeeklyV2 = "AU5800-weekly-2026-10-21-v2";
 export const currentWeeklyVersion = "AU5800-weekly-2026-10-27-v3";
 export const hasDailyIseDrain = (version: string) =>
-  [legacyDailyV5, currentDailyVersion].includes(version);
+  [legacyDailyV5, legacyDailyV6, currentDailyVersion].includes(version);
 export const hasDailyTasks = (version: string) =>
-  [legacyDailyV4, legacyDailyV5, currentDailyVersion].includes(version);
+  [legacyDailyV4, legacyDailyV5, legacyDailyV6, currentDailyVersion].includes(
+    version,
+  );
 export const hasRevisedWorkstation = (version: string) =>
-  [legacyDailyV5, currentDailyVersion, currentWeeklyVersion].includes(version);
+  [
+    legacyDailyV5,
+    legacyDailyV6,
+    currentDailyVersion,
+    currentWeeklyVersion,
+  ].includes(version);
 export const hasWeeklyHardware = (version: string) =>
   [legacyWeeklyV2, currentWeeklyVersion].includes(version);
 export const hasModernDaily = (version: string) =>
-  [legacyDailyV3, legacyDailyV4, legacyDailyV5, currentDailyVersion].includes(
-    version,
-  );
+  [
+    legacyDailyV3,
+    legacyDailyV4,
+    legacyDailyV5,
+    legacyDailyV6,
+    currentDailyVersion,
+  ].includes(version);
 export interface ReagentBottle {
   id?: string;
   test?: string;

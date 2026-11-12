@@ -276,7 +276,7 @@ export function dailyQuests(d: Daily): Quest[] {
       label,
       route,
       done: !!d.completed[i],
-      available: available[source],
+      available: d.unrestricted || available[source],
       reason: available[source] ? "" : reasons[source],
       targets:
         i === 3 && analyzerChecked && d.instrument.analyzerMaintenance

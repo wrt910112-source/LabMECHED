@@ -14,6 +14,7 @@ import {
 } from "../shared/dailyTasks.ts";
 import {
   calibrationNeeds,
+  hasPreparation,
   legacyDailyV5 as dailyRubricVersion,
   legacyDailyV3,
 } from "../shared/dailyScenario.ts";
@@ -96,7 +97,7 @@ function manual(x) {
   });
   assert.equal(x.run("diag", "ise").error, "");
   assert.equal(x.run("drain-result", "ISE", "正常").error, "");
-  if (x.version === "AU5800-2026-10-28-v6") x.run("maintenance", "analyzer", true);
+  if (hasPreparation(x.version)) x.run("maintenance", "analyzer", true);
   for (const id of dailyProbes) assert.equal(x.run("daily-wipe", id).error, "");
   x.run("maintenance", "analyzer", true);
   x.run("daily-mode", undefined, "inspect");
@@ -119,7 +120,7 @@ function rack(x) {
 }
 function complete(source = "model", version = dailyRubricVersion) {
   const x = scenario(source, undefined, version);
-  const current = version === "AU5800-2026-10-28-v6";
+  const current = hasPreparation(version);
   manual(x);
   if (current) x.run("maintenance", "analyzer", false);
   clean(x);

@@ -17,6 +17,14 @@ test("daily maintenance sequence, prerequisites, six probes, calibration and pai
   await page.goto("/");
   await page.getByRole("button", { name: "任務中心", exact: true }).click();
   await page.getByRole("button", { name: "開始練習", exact: true }).click();
+  await expect(page.locator(".training-time-note")).toHaveText(
+    /本輪有效練習時間 \d+ 分 \d+ 秒/,
+  );
+  const log = page.getByRole("region", { name: "練習任務紀錄" });
+  await expect(log.getByRole("button", { name: /Total Prime/ })).toBeDisabled();
+  await expect(
+    log.getByRole("button", { name: /校正與品管上機/ }),
+  ).toBeDisabled();
   await page
     .getByRole("region", { name: "練習任務紀錄" })
     .getByRole("button", { name: "操作電腦", exact: true })

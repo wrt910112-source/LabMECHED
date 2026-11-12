@@ -29,6 +29,7 @@ export interface PreparationState {
   >;
 }
 export interface PreparationGate {
+  canOperate?: boolean;
   ready: boolean;
   token: string;
 }
@@ -87,8 +88,10 @@ export function syncPreparation(
   state: PreparationState,
   gate: PreparationGate,
 ) {
+  if (gate.canOperate === true) return state;
   for (const r of Object.values(state.racks))
-    if (!gate.ready || r.loadedToken !== gate.token) r.loadedToken = null;
+    if (!(gate.canOperate ?? gate.ready) || r.loadedToken !== gate.token)
+      r.loadedToken = null;
   return state;
 }
 export function cupFilled(c: PreparationCup, catalog = materialById) {
@@ -107,13 +110,15 @@ export function preparationProgress(
     const dispensed = matches.length > 0;
     const racked = matches.some((c) => c.rack === req.rack && c.slot !== null);
     const loaded =
-      gate.ready &&
+      (gate.canOperate ?? gate.ready) &&
       matches.some(
         (c) =>
           c.rack === req.rack &&
           c.slot !== null &&
           state.racks[c.rack].location === "loaded" &&
-          state.racks[c.rack].loadedToken === gate.token,
+          (gate.canOperate === true
+            ? !!state.racks[c.rack].loadedToken
+            : state.racks[c.rack].loadedToken === gate.token),
       );
     return {
       ...req,
@@ -136,7 +141,7 @@ export function preparationProgress(
       0,
     ),
     total: 48,
-    done: gate.ready && items.every((x) => x.loaded),
+    done: (gate.canOperate ?? gate.ready) && items.every((x) => x.loaded),
   };
 }
 /** Commands only express user intent. Clients cannot submit completion or identity flags. */
@@ -178,7 +183,8 @@ export function applyPreparation(
     state.racks[command.rack] = { location: "bench", loadedToken: null };
     return { state, error: "" };
   }
-  if (!gate.ready) return fail("請先完成有效的前十二組保養及 Rack 登記。");
+  if (!(gate.canOperate ?? gate.ready))
+    return fail("請先完成有效的前十二組保養及 Rack 登記。");
   if (a === "discard-pipette") {
     state.pipette = null;
     return { state, error: "" };

@@ -555,7 +555,7 @@ test("daily model and native rack/QC controls complete without hints; earliest/l
   await page.getByRole("button", { name: "返回歷程", exact: true }).click();
   await expect(page.locator(".exam-comparisons")).toContainText("0.8 → 100");
 });
-test("daily exam mode buttons are disabled natively and new inspection evidence resumes after refresh", async ({
+test("daily exam physical interlocks stay native and inspection evidence resumes after refresh", async ({
   page,
 }) => {
   await login(page, "student");
@@ -654,6 +654,83 @@ test("daily exam mode buttons are disabled natively and new inspection evidence 
   expect(restored.sim.dailyTasks.syringes["後方 syringe 組"].moisture).toBe("");
   await page.getByRole("button", { name: "放棄本次", exact: true }).click();
   await page.getByRole("button", { name: "確認放棄", exact: true }).click();
+});
+
+test("v7 exam unlocks SOP and partial Rack entry, pushes with omissions and restores the final diagnosis", async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  await login(page, "student");
+  await page
+    .locator(".mission-card")
+    .filter({ has: page.getByRole("heading", { name: "日保養", exact: true }) })
+    .getByRole("button", { name: "開始測驗" })
+    .click();
+  const log = page.getByRole("region", { name: "考試任務紀錄" });
+  await expect(log.locator("ol button:disabled")).toHaveCount(0);
+  await log.getByRole("button", { name: /Total Prime/ }).click();
+  await log.getByRole("button", { name: "操作電腦", exact: true }).click();
+  const ws = page.locator(".shared-exam-room .workstation");
+  await clickSaved(page, () => instrument(ws, "ISE Maintenance", true));
+  const early = await clickSaved(page, () =>
+    ws.getByRole("button", { name: "Total Prime", exact: true }).click(),
+  );
+  expect(early.applied).toBe(true);
+  expect(early.attempt.sim.prime).toBe(0);
+  await expect(ws).not.toContainText("Total Prime 前 ISE 試劑檢查");
+  await ws.getByRole("button", { name: "Home 主選單", exact: true }).click();
+  await ws
+    .getByRole("button", { name: "Rack Requisition", exact: true })
+    .click();
+  await ws.getByRole("button", { name: "Calibration", exact: true }).click();
+  await expect(
+    ws.getByRole("button", { name: "Start Entry", exact: true }),
+  ).toBeEnabled();
+  await ws.getByRole("button", { name: "Start Entry", exact: true }).click();
+  await ws.getByRole("button", { name: "3.ALT RB", exact: true }).click();
+  await ws.getByRole("button", { name: "9.CRE Cal.", exact: true }).click();
+  const entry = await clickSaved(page, () =>
+    ws.getByRole("button", { name: "Entry", exact: true }).click(),
+  );
+  expect(entry.applied).toBe(true);
+  expect(entry.attempt.sim.rack.Serum.rb).toEqual(["3.ALT"]);
+  expect(entry.attempt.sim.rack.Serum.cal).toEqual(["9.CRE"]);
+  expect(entry.attempt.preparationAccess.ready).toBe(false);
+  expect(entry.attempt.preparationAccess.canOperate).toBe(true);
+  await expect(ws.locator(".editing-badge")).not.toBeVisible();
+  await ws.getByRole("button", { name: "退出螢幕 ×", exact: true }).click();
+  await log.getByRole("button", { name: /校正與品管上機/ }).click();
+  await log.getByRole("button", { name: "操作電腦", exact: true }).click();
+  const prep = page.getByRole("region", {
+    name: "校正與品管備料",
+    exact: true,
+  });
+  const b = (name: string) => prep.getByRole("button", { name, exact: true });
+  await clickSaved(page, () => prep.getByTestId("prep-source-water").click());
+  await clickSaved(page, () => b("吸取來源液").click());
+  await clickSaved(page, () => b("加入容器").click());
+  await b("03 裝架").click();
+  await prep.getByLabel("備料檢體架", { exact: true }).selectOption("RB");
+  await clickSaved(page, () => b("放入架位").click());
+  await clickSaved(page, () => b("放至進樣區").click());
+  const pushed = await clickSaved(page, () => b("推入儀器").click());
+  expect(pushed.applied).toBe(true);
+  expect(pushed.attempt.sim.preparation.racks.RB.location).toBe("loaded");
+  await expect(prep.locator(".prep-hint")).toHaveCount(0);
+  await expect(page.locator(".guidance-markers span")).toHaveCount(0);
+  await expect(prep).not.toContainText("上機時缺少");
+  await reloadExamWindow(page);
+  const resumed = await page.evaluate(
+    async () => (await (await fetch("/api/attempts/active")).json()).attempt,
+  );
+  expect(resumed.sim.preparation.racks.RB.location).toBe("loaded");
+  expect(resumed.sim.rack.Serum.rb).toEqual(["3.ALT"]);
+  await page.getByRole("button", { name: "完成", exact: true }).click();
+  await page.getByRole("button", { name: "確認交卷", exact: true }).click();
+  await expect(page.locator(".debrief-groups")).toContainText("上機缺失待補正");
+  await expect(page.locator(".debrief-groups")).toContainText("5.AST");
+  await expect(page.locator(".debrief-groups")).toContainText("15.HDL");
+  await expect(page.locator(".exam-stats")).toContainText("操作錯誤2");
 });
 
 test("weekly model actions, skip support, refresh recovery, neutral restrictions and failed-save retry", async ({

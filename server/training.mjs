@@ -270,7 +270,10 @@ export function createTrainingService(db, accounts, clock = Date.now) {
       versionForKind(kind),
       now,
       JSON.stringify(
-        startSimulationTiming(initialEngine(versionForKind(kind)), now),
+        startSimulationTiming(
+          initialEngine(versionForKind(kind), "practice"),
+          now,
+        ),
       ),
       JSON.stringify(snapshot),
       profile.version || null,

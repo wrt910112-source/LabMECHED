@@ -4,6 +4,7 @@ import { dailyProbes } from "../shared/maintenance";
 import type { Daily } from "./DailyTraining";
 import {
   initialInstrument,
+  hasUnrestrictedDailyExam,
   calibrationNeeds,
   canWipe,
   canHandleCups,
@@ -21,8 +22,10 @@ export function useExamDaily(
   dispatch: (command: ExamCommand) => Promise<boolean>,
   blocked: boolean,
   reset: () => void,
+  practice = false,
 ): Daily {
   const s = attempt.sim;
+  const unrestricted = !practice && hasUnrestrictedDailyExam(attempt.version);
   const instrument = s.instrument || initialInstrument();
   const tasks = s.dailyTasks || initialDailyTasks();
   const [tempDraft, setTempDraft] = useState<typeof s.temp | null>(null);
@@ -95,6 +98,7 @@ export function useExamDaily(
   return {
     ...extra,
     ...rules,
+    unrestricted,
     active: true,
     instrument,
     bottles: s.bottles,
@@ -224,8 +228,9 @@ export function useExamDaily(
             data: { category: "calibration", selection },
           });
     },
-    canInspect: rules.canInspect && instrument.analyzerMaintenance,
-    rackReady,
+    canInspect:
+      (unrestricted || rules.canInspect) && instrument.analyzerMaintenance,
+    rackReady: unrestricted || rackReady,
     wipeAccessible: canWipe(instrument) && instrument.analyzerMaintenance,
     cupAccessible: canHandleCups(instrument),
     iseDrainValid,

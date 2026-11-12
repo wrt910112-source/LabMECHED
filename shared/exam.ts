@@ -19,7 +19,12 @@ import {
   type PreparationState,
   type PreparationAction,
 } from "./preparation.ts";
-import { hasPreparation, legacyDailyV5 } from "./dailyScenario.ts";
+import {
+  hasPreparation,
+  legacyDailyV5,
+  legacyDailyV6,
+  hasUnrestrictedDailyExam,
+} from "./dailyScenario.ts";
 import {
   initialDailyTasks,
   tasksReadiness,
@@ -109,6 +114,7 @@ export const supportsVersion = (kind: ExamKind, version: string) =>
           legacyDailyV3,
           legacyDailyV4,
           legacyDailyV5,
+          legacyDailyV6,
         ].includes(version)) ||
       (kind === "weekly" && version === legacyWeeklyV2)));
 export const kindNames = {
@@ -234,7 +240,17 @@ export interface Simulation {
   calibrationEntered?: boolean;
   rack: Record<string, RackSelection>;
 }
+export interface DailyLoadSnapshot {
+  rack: string;
+  at: number;
+  missingIds: string[];
+  missingLabels: string[];
+  missingRb: string[];
+  missingCali: string[];
+}
 export interface EngineState {
+  dailyPolicy?: "exam" | "practice";
+  dailyLoads?: Record<string, DailyLoadSnapshot>;
   sim: Simulation;
   ledger: Record<string, boolean>;
   waitingMs: number;
@@ -247,8 +263,18 @@ export interface ActionOutcome {
   message: string;
   accepted: boolean;
   label: string;
+  sequenceError?: boolean;
+  loadAssessment?: DailyLoadSnapshot;
+  correctedLoadSteps?: string[];
 }
 export interface ExamEvent {
+  diagnostic?: {
+    steps: string[];
+    success: boolean;
+    loadRack?: string;
+    correctedLoadSteps?: string[];
+    stepResults?: { step: string; success: boolean; error: boolean }[];
+  } | null;
   id: string;
   at: number;
   source: string;
@@ -307,8 +333,12 @@ export interface Attempt {
   user?: Pick<User, "id" | "username" | "name" | "role" | "enabled">;
 }
 
-export function initialEngine(version = dailyRubricVersion): EngineState {
+export function initialEngine(
+  version = dailyRubricVersion,
+  mode: "exam" | "practice" = "exam",
+): EngineState {
   return {
+    ...(hasUnrestrictedDailyExam(version) ? { dailyPolicy: mode } : {}),
     ledger: {},
     waitingMs: 0,
     skippedMs: 0,
@@ -449,7 +479,12 @@ function applyBaseCommand(
   const note = (error: string) => {
     out.error = error;
   };
+  const sequenceNote = (error: string) => {
+    note(error);
+    if (isUnrestrictedDailyExam(state, version)) out.sequenceError = true;
+  };
   const busy = !!s.batch || s.phase === "w2" || s.phase === "photocal";
+  const flexible = kind === "daily" && isUnrestrictedDailyExam(state, version);
   const modern = kind === "daily" && hasModernDaily(version);
   const v4 = kind === "daily" && hasDailyTasks(version);
   const revisedWorkstation = hasRevisedWorkstation(version);
@@ -539,6 +574,20 @@ function applyBaseCommand(
         const rejected = fail(result.error);
         rejected.message = result.error;
         return rejected;
+      }
+      if (flexible && action.action === "push" && action.rack) {
+        const snapshot = captureDailyLoad(state, version, action.rack, now);
+        const previous = state.dailyLoads?.[action.rack];
+        out.correctedLoadSteps = (previous?.missingIds || []).filter(
+          (id) => !snapshot.missingIds.includes(id),
+        );
+        out.label = `${action.rack} 檢體架推入儀器${out.correctedLoadSteps.length ? `（上機缺失補正 ${out.correctedLoadSteps.length} 項）` : ""}`;
+        state.dailyLoads = { ...state.dailyLoads, [action.rack]: snapshot };
+        out.loadAssessment = snapshot;
+        if (snapshot.missingIds.length)
+          note(
+            `上機時缺少：${snapshot.missingLabels.join("、")}${snapshot.missingRb.length ? `；RB 未登記：${snapshot.missingRb.join("、")}` : ""}${snapshot.missingCali.length ? `；CALI 未登記：${snapshot.missingCali.join("、")}` : ""}`,
+          );
       }
       out.message = "備料操作已保存。身份、劑量與正式架位核對狀態維持原紀錄。";
       break;
@@ -790,8 +839,10 @@ function applyBaseCommand(
       if (!detailedProbes.includes(id) || !result())
         return fail("無效排水紀錄");
       out.label = `${id} 直線排水：${value}`;
+      if (flexible && id === "ISE" && !canRunIseProbeDiag(instrument, busy))
+        return fail("ISE 排水紀錄時儀器狀態不允許");
       if (s.diag !== id) {
-        note(`${id} 未執行對應 DIAG 就記錄排水`);
+        sequenceNote(`${id} 未執行對應 DIAG 就記錄排水`);
         break;
       }
       if (v5 && id === "ISE" && !canRunIseProbeDiag(instrument, busy))
@@ -1016,19 +1067,27 @@ function applyBaseCommand(
       out.label =
         value === "wipe" ? "Cleaning Probe" : "Inspect Probe & Mixing Bar";
       if (busy) return fail("運轉期間啟動探針程序", "儀器正在運轉。");
-      if ((!modern || value === "inspect" || hasPreparation(version)) && !s.maintenance)
+      if (
+        (!modern || value === "inspect" || hasPreparation(version)) &&
+        !s.maintenance
+      )
         return fail("未進入 Maintenance 就啟動探針程序", "儀器不在保養模式。");
       s.dailyMode = value;
       if (value === "inspect") {
         const valid = dailyDependencies(s.wiped, s.cleaned, s.prime).canInspect;
         if (revisedDaily) state.ledger.dailyInspectValid = valid;
-        if (!valid) note("六支探針擦拭前執行排水及攪拌檢查");
+        if (!valid) sequenceNote("六支探針擦拭前執行排水及攪拌檢查");
       }
       break;
     case "daily-wipe":
       if (!dailyProbes.includes(id)) return fail("無效探針");
       out.label = `${id} 酒精棉擦拭`;
-      if (modern ? !canWipe(instrument, busy) || (hasPreparation(version) && !instrument.analyzerMaintenance) : !physical())
+      if (
+        modern
+          ? !canWipe(instrument, busy) ||
+            (hasPreparation(version) && !instrument.analyzerMaintenance)
+          : !physical()
+      )
         return fail(
           "探針擦拭時儀器狀態不允許",
           modern
@@ -1042,7 +1101,7 @@ function applyBaseCommand(
         return fail("請先勾選 Analyzer Maintenance。");
       if (!dailyProbes.includes(id) || !result()) return fail("無效排水紀錄");
       if (s.dailyMode !== "inspect") {
-        note("未執行 Inspect Probe 就記錄排水");
+        sequenceNote("未執行 Inspect Probe 就記錄排水");
         break;
       }
       s.dailyDrains[id] = String(value);
@@ -1052,7 +1111,7 @@ function applyBaseCommand(
           !!state.ledger.dailyInspectValid &&
           dailyDependencies(s.wiped, s.cleaned, s.prime).canInspect;
         if (!state.ledger[`daily-drain-${id}`])
-          note("探針擦拭完成前的排水檢查，需於擦拭後重新執行檢查");
+          sequenceNote("探針擦拭完成前的排水檢查，需於擦拭後重新執行檢查");
       }
       if (value === "異常") note(`${id} 排水異常`);
       break;
@@ -1062,7 +1121,7 @@ function applyBaseCommand(
       if (!["左側", "右側"].includes(id) || !result())
         return fail("無效攪拌紀錄");
       if (s.dailyMode !== "inspect") {
-        note("未執行 Inspect Mixing Bar 就記錄運轉");
+        sequenceNote("未執行 Inspect Mixing Bar 就記錄運轉");
         break;
       }
       s.dailyMix[id] = String(value);
@@ -1072,7 +1131,7 @@ function applyBaseCommand(
           !!state.ledger.dailyInspectValid &&
           dailyDependencies(s.wiped, s.cleaned, s.prime).canInspect;
         if (!state.ledger[`daily-mix-${id}`])
-          note("探針擦拭完成前的攪拌檢查，需於擦拭後重新執行檢查");
+          sequenceNote("探針擦拭完成前的攪拌檢查，需於擦拭後重新執行檢查");
       }
       if (value === "異常") note(`${id} mixing bars 異常`);
       break;
@@ -1115,11 +1174,11 @@ function applyBaseCommand(
             : "主蓋或保養模式不允許啟動。",
         );
       if (v4 && !tasksReadiness(s.dailyTasks!, s.bottles).iseReady) {
-        note("Total Prime 前 ISE 試劑檢查或不足更換尚未完成");
+        sequenceNote("Total Prime 前 ISE 試劑檢查或不足更換尚未完成");
         break;
       }
       if (!dailyDependencies(s.wiped, s.cleaned, s.prime).canPrime) {
-        note("ISE Cleaning 前執行 Total Prime");
+        sequenceNote("ISE Cleaning 前執行 Total Prime");
         if (revisedDaily) break;
       }
       s.prime = Math.min(3, s.prime + 1);
@@ -1154,33 +1213,33 @@ function applyBaseCommand(
             : "主蓋或保養模式不允許啟動。",
         );
       if (v4 && !tasksReadiness(s.dailyTasks!, s.bottles).iseReady) {
-        note("ISE 校正前試劑檢查或不足更換尚未完成");
+        sequenceNote("ISE 校正前試劑檢查或不足更換尚未完成");
         break;
       }
       if (
         revisedDaily &&
         !dailyDependencies(s.wiped, s.cleaned, s.prime).canCalibrate
       ) {
-        note("ISE Cleaning 與三次 Total Prime 完成前執行校正");
+        sequenceNote("ISE Cleaning 與三次 Total Prime 完成前執行校正");
         break;
       }
       if (
         s.cup !== "discarded" ||
         !s.drops.every((x) => x !== "" && Number(x) >= 10)
       ) {
-        note("校正執行時 CLEAN 杯或校正液配置不完整");
+        sequenceNote("校正執行時 CLEAN 杯或校正液配置不完整");
         break;
       }
       if (id !== "urine") s.cal.serum = true;
       if (id !== "serum") s.cal.urine = true;
       s.cal.checked = false;
-      if (s.prime < 3) note("三次 Total Prime 完成前執行校正");
+      if (s.prime < 3) sequenceNote("三次 Total Prime 完成前執行校正");
       break;
     }
     case "cal-review":
       out.label = "ISE 校正結果檢查";
       if (!s.cal.serum || !s.cal.urine) {
-        note("校正完成前確認結果");
+        sequenceNote("校正完成前確認結果");
         break;
       }
       s.cal.checked = true;
@@ -1229,15 +1288,15 @@ function applyBaseCommand(
       if (modern) {
         if (busy) return fail("運轉期間執行 Reagent Check", "儀器正在運轉。");
         if (!s.temp.saved || !s.index) {
-          note("Reagent Check 前尚未完成溫度登記及 New Index");
+          sequenceNote("Reagent Check 前尚未完成溫度登記及 New Index");
           break;
         }
         if (v4 && !tasksReadiness(s.dailyTasks!, s.bottles).suppliesReady) {
-          note("Reagent Check 前十二瓶洗滌液尚未逐瓶補滿或種類不符");
+          sequenceNote("Reagent Check 前十二瓶洗滌液尚未逐瓶補滿或種類不符");
           break;
         }
         if (v5 && !s.reagents.every(reagentReady)) {
-          note("All positions 執行時十一瓶必換試劑尚未就緒");
+          sequenceNote("All positions 執行時十一瓶必換試劑尚未就緒");
           break;
         }
         for (const r of s.reagents.filter(reagentReady)) {
@@ -1274,7 +1333,11 @@ function applyBaseCommand(
         )
       )
         return fail("無效 QC 合併登記");
-      if (revisedDaily && !dailyExamReadiness(state, version).rackReady) {
+      if (
+        revisedDaily &&
+        !flexible &&
+        !dailyExamReadiness(state, version).rackReady
+      ) {
         note("其他日保養項目尚未全部完成就執行 Rack Requisition");
         break;
       }
@@ -1284,7 +1347,11 @@ function applyBaseCommand(
     }
     case "rack": {
       out.label = `${id} Rack Requisition Entry`;
-      if (revisedDaily && !dailyExamReadiness(state, version).rackReady) {
+      if (
+        revisedDaily &&
+        !flexible &&
+        !dailyExamReadiness(state, version).rackReady
+      ) {
         note("其他日保養項目尚未全部完成就執行 Rack Requisition");
         break;
       }
@@ -1326,11 +1393,14 @@ function applyBaseCommand(
         out.label = `${id} ${modern ? data.category + " " : ""}Rack Requisition Entry`;
         if (modern && id === "Serum" && data.category === "calibration") {
           s.calibrationEntered = true;
-          const needs = calibrationNeeds(s.reagents);
+          const needs = flexible
+            ? dailyRegistrationNeeds(state)
+            : calibrationNeeds(s.reagents);
           state.ledger.calEntry =
             needs.rb.every((x) => s.rack.Serum.rb.includes(x)) &&
             needs.cal.every((x) => s.rack.Serum.cal.includes(x));
           if (
+            !flexible &&
             !state.ledger.calEntry &&
             (s.rack.Serum.rb.length || s.rack.Serum.cal.length)
           )
@@ -1358,13 +1428,62 @@ function applyBaseCommand(
   return out;
 }
 
+export const isUnrestrictedDailyExam = (state: EngineState, version: string) =>
+  hasUnrestrictedDailyExam(version) && state.dailyPolicy === "exam";
+export function dailyRegistrationNeeds(state: EngineState) {
+  const rows = state.sim.reagents;
+  return {
+    rb: [...new Set(rows.flatMap((r) => (r.test ? [r.test] : [])))],
+    cal: [
+      ...new Set(
+        rows.flatMap((r) => (r.test && r.cal !== "na" ? [r.test] : [])),
+      ),
+    ],
+  };
+}
+function registrationComplete(state: EngineState) {
+  const needs = dailyRegistrationNeeds(state),
+    rack = state.sim.rack.Serum;
+  return (
+    !!state.sim.calibrationEntered &&
+    needs.rb.every((id) => rack.rb.includes(id)) &&
+    needs.cal.every((id) => rack.cal.includes(id))
+  );
+}
+function captureDailyLoad(
+  state: EngineState,
+  version: string,
+  rack: string,
+  at: number,
+): DailyLoadSnapshot {
+  const missing = attemptChecks("daily", state, [], version, true)
+    .filter((g) => g.id !== "preparation")
+    .flatMap((g) =>
+      g.items
+        .filter((i) => !i.completed)
+        .map((i) => ({ id: `${g.id}/${i.id}`, label: i.label })),
+    );
+  const needs = dailyRegistrationNeeds(state);
+  return {
+    rack,
+    at,
+    missingIds: missing.map((i) => i.id),
+    missingLabels: missing.map((i) => i.label),
+    missingRb: needs.rb.filter((id) => !state.sim.rack.Serum.rb.includes(id)),
+    missingCali: needs.cal.filter(
+      (id) => !state.sim.rack.Serum.cal.includes(id),
+    ),
+  };
+}
 export function examPreparationGate(state: EngineState, version: string) {
   const s = state.sim,
     needs = calibrationNeeds(s.reagents);
-  return preparationGate(
+  const gate = preparationGate(
     hasPreparation(version) &&
       dailyExamReadiness(state, version).rackReady &&
-      !!state.ledger.calEntry &&
+      (isUnrestrictedDailyExam(state, version)
+        ? registrationComplete(state)
+        : !!state.ledger.calEntry) &&
       needs.rb.every((id) => s.rack.Serum.rb.includes(id)) &&
       needs.cal.every((id) => s.rack.Serum.cal.includes(id)) &&
       s.rack.Serum.qc.length > 0 &&
@@ -1372,6 +1491,9 @@ export function examPreparationGate(state: EngineState, version: string) {
     s.rack,
     s.index,
   );
+  return isUnrestrictedDailyExam(state, version)
+    ? { ...gate, canOperate: true }
+    : gate;
 }
 export function applyCommand(
   input: EngineState,
@@ -1429,7 +1551,9 @@ export function dailyExamReadiness(state: EngineState, version: string) {
   const s = state.sim,
     revised = version !== rubricVersion;
   const base = dailyReadiness({
-    analyzerMaintenance: hasPreparation(version) ? s.instrument?.analyzerMaintenance : false,
+    analyzerMaintenance: hasPreparation(version)
+      ? s.instrument?.analyzerMaintenance
+      : false,
     ...s,
     drains: Object.fromEntries(
       Object.entries(s.dailyDrains).filter(
@@ -1471,8 +1595,10 @@ export function attemptChecks(
   state: EngineState,
   events: ExamEvent[],
   version = versionForKind(kind),
+  raw = false,
 ): ScoreGroup[] {
   const s = state.sim,
+    flexible = kind === "daily" && isUnrestrictedDailyExam(state, version),
     groups: ScoreGroup[] = [];
   const group = (id: string, label: string, items: CheckItem[]) =>
     groups.push({
@@ -1521,7 +1647,15 @@ export function attemptChecks(
       ),
     );
     group("inspect", "排水與攪拌檢查", [
-      ...(hasPreparation(version) ? [item("analyzer-maintenance-off", "檢查後取消 Analyzer Maintenance", !s.instrument?.analyzerMaintenance)] : []),
+      ...(hasPreparation(version)
+        ? [
+            item(
+              "analyzer-maintenance-off",
+              "檢查後取消 Analyzer Maintenance",
+              !s.instrument?.analyzerMaintenance,
+            ),
+          ]
+        : []),
       ...(hasDailyIseDrain(version)
         ? [
             item(
@@ -1638,20 +1772,22 @@ export function attemptChecks(
       item(
         "calEntry",
         "Serum Calibration Entry",
-        (hasModernDaily(version)
-          ? !!state.ledger.calEntry
-          : s.rack.Serum.cal.length > 0) &&
-          (!revised || rules.rackReady),
+        (flexible
+          ? registrationComplete(state)
+          : hasModernDaily(version)
+            ? !!state.ledger.calEntry
+            : s.rack.Serum.cal.length > 0) &&
+          (flexible || !revised || rules.rackReady),
       ),
       item(
         "serumEntry",
         "Serum QC Entry",
-        s.rack.Serum.qc.length > 0 && (!revised || rules.rackReady),
+        s.rack.Serum.qc.length > 0 && (flexible || !revised || rules.rackReady),
       ),
       item(
         "urineEntry",
         "Urine QC Entry",
-        s.rack.Urine.qc.length > 0 && (!revised || rules.rackReady),
+        s.rack.Urine.qc.length > 0 && (flexible || !revised || rules.rackReady),
       ),
     ]);
     if (hasPreparation(version) && s.preparation) {
@@ -1830,6 +1966,24 @@ export function attemptChecks(
       ),
     ]);
   }
+  if (flexible && !raw) {
+    for (const g of groups) {
+      if (g.id === "preparation") continue;
+      for (const i of g.items) {
+        const blocked = Object.values(state.dailyLoads || {}).filter(
+          (snapshot) => snapshot.missingIds.includes(`${g.id}/${i.id}`),
+        );
+        if (blocked.length) {
+          i.completed = false;
+          i.diagnosis = {
+            status: "上機缺失待補正",
+            reason: `${blocked.map((s) => s.rack).join("、")} 架推入時缺少「${i.label}」，須補齊並取回、重推該架。${i.id === "calEntry" ? blocked.map((s) => `${s.rack} 架：RB 未登記 ${s.missingRb.join("、") || "無"}；CALI 未登記 ${s.missingCali.join("、") || "無"}`).join("；") : ""}`,
+          };
+        }
+      }
+      g.proportion = g.items.filter((i) => i.completed).length / g.items.length;
+    }
+  }
   return groups;
 }
 export function attemptProgress(
@@ -1845,6 +1999,43 @@ export function attemptProgress(
     totalGroups: groups.length,
   };
 }
+export function countDailyCorrections(events: ExamEvent[]) {
+  const unresolved: ExamEvent[] = [];
+  let corrected = 0;
+  for (const event of events) {
+    if (event.accepted) {
+      const keys =
+        event.diagnostic?.correctedLoadSteps ||
+        (!event.error && event.diagnostic?.success
+          ? event.diagnostic.steps
+          : []);
+      const index = unresolved.findIndex((prior) => {
+        if (prior.diagnostic?.loadRack)
+          return (
+            prior.diagnostic.loadRack === event.diagnostic?.loadRack &&
+            prior.diagnostic.steps.some((id) => keys.includes(id))
+          );
+        if (event.error) return false;
+        if (prior.diagnostic && event.diagnostic)
+          return prior.diagnostic.steps.some((id) => keys.includes(id));
+        return (
+          prior.command.type === event.command.type &&
+          prior.command.target === event.command.target &&
+          (event.command.type !== "preparation" ||
+            (prior.command.data?.action === event.command.data?.action &&
+              prior.command.data?.rack === event.command.data?.rack))
+        );
+      });
+      if (index >= 0) {
+        unresolved.splice(index, 1);
+        corrected++;
+      }
+    }
+    if (event.error) unresolved.push(event);
+  }
+  return corrected;
+}
+
 export function scoreAttempt(
   kind: ExamKind,
   state: EngineState,
@@ -1858,7 +2049,7 @@ export function scoreAttempt(
   if (hasModernDaily(version))
     for (const g of groups)
       for (const x of g.items)
-        x.diagnosis = diagnoseCheck(x, events, s.reagents);
+        x.diagnosis ??= diagnoseCheck(x, events, s.reagents);
   const all = groups.flatMap((g) => g.items),
     critical = all.filter((x) => x.critical),
     errors = events.filter((e) => e.error);
@@ -1888,23 +2079,25 @@ export function scoreAttempt(
       signatures.add(signature);
     });
   // A correction is a later valid action of the same category/target after a recorded error.
-  const corrections = errors.filter((e) =>
-    events
-      .slice(events.indexOf(e) + 1)
-      .some(
-        (next) =>
-          !next.error &&
-          next.accepted &&
-          next.command.type === e.command.type &&
-          next.command.target === e.command.target &&
-          (!hasDailyTasks(version) ||
-            e.command.type !== "daily-syringe" ||
-            next.command.data?.finding === e.command.data?.finding) &&
-          (!hasModernDaily(version) ||
-            e.command.type !== "rack" ||
-            next.command.data?.category === e.command.data?.category),
-      ),
-  ).length;
+  const corrections = isUnrestrictedDailyExam(state, version)
+    ? countDailyCorrections(events)
+    : errors.filter((e) =>
+        events
+          .slice(events.indexOf(e) + 1)
+          .some(
+            (next) =>
+              !next.error &&
+              next.accepted &&
+              next.command.type === e.command.type &&
+              next.command.target === e.command.target &&
+              (!hasDailyTasks(version) ||
+                e.command.type !== "daily-syringe" ||
+                next.command.data?.finding === e.command.data?.finding) &&
+              (!hasModernDaily(version) ||
+                e.command.type !== "rack" ||
+                next.command.data?.category === e.command.data?.category),
+          ),
+      ).length;
   const waitingMs =
       state.waitingMs +
       (state.waitStarted ? Math.max(0, submittedAt - state.waitStarted) : 0),

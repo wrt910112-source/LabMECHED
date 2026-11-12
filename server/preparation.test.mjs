@@ -17,7 +17,8 @@ import {
   preparationProgress,
   preparationGate,
 } from "../shared/preparation.ts";
-import { currentDailyVersion, legacyDailyV5 } from "../shared/dailyScenario.ts";
+// Freeze these regression cases to v6; v7 has separate exam/practice tests.
+import { legacyDailyV6 as currentDailyVersion, legacyDailyV5 } from "../shared/dailyScenario.ts";
 import {
   initialEngine,
   applyCommand,

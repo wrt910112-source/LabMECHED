@@ -90,7 +90,7 @@ export default function PreparationPanel({
     }
   }
   const busy = disabled || localBusy,
-    blocked = busy || !gate.ready;
+    blocked = busy || !(gate.canOperate ?? gate.ready);
   const primary: PreparationAction =
     phase === 0
       ? { action: "aspirate" }

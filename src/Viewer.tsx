@@ -813,6 +813,7 @@ export default function Viewer(props: Props) {
       props.preparation?.state,
       props.preparation?.view,
       props.preparation?.gate.ready,
+      props.preparation?.gate.canOperate,
       props.preparation?.gate.token,
       props.preparation?.exam,
       props.preparation?.freeSimulation,

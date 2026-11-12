@@ -1,6 +1,6 @@
 import { accountError } from "./accounts.mjs";
 import { scoreAttempt, attemptChecks } from "../shared/exam.ts";
-import { analyticsVersion } from "../shared/training.ts";
+import { analyticsVersion, analysisVersionFor } from "../shared/training.ts";
 
 const median = (values) => {
   const v = [...values].sort((a, b) => a - b);
@@ -301,17 +301,27 @@ export function createAnalyticsService(db, training) {
         }
         const diag = event.diagnostic;
         let correctedStep = null;
-        if (diag.success) {
-          const index = unresolved.findIndex((e) =>
-            e.steps.some((key) => diag.steps.includes(key)),
+        const repairKeys =
+          diag.correctedLoadSteps || (diag.success ? diag.steps : []);
+        if (repairKeys.length) {
+          const index = unresolved.findIndex(
+            (e) =>
+              (!e.loadRack || e.loadRack === diag.loadRack) &&
+              e.steps.some((key) => repairKeys.includes(key)),
           );
           if (index >= 0) {
             const [prior] = unresolved.splice(index, 1);
-            correctedStep = diag.steps.find((key) => prior.steps.includes(key));
+            correctedStep = repairKeys.find((key) => prior.steps.includes(key));
             correctionCount++;
           }
         }
-        if (event.error) unresolved.push({ steps: diag.steps });
+        if (event.error)
+          unresolved.push({
+            steps: diag.stepResults
+              ? diag.stepResults.filter((x) => x.error).map((x) => x.step)
+              : diag.steps,
+            loadRack: diag.loadRack,
+          });
         if (diag.errorCode)
           categories[diag.errorCode] = (categories[diag.errorCode] || 0) + 1;
         for (const key of diag.steps) {
@@ -328,10 +338,12 @@ export function createAnalyticsService(db, training) {
             pending: 0,
             corrections: 0,
           };
-          if (!item.attempts) item.firstSuccess = diag.success;
+          const evaluation = diag.stepResults?.find((x) => x.step === key);
+          if (!item.attempts)
+            item.firstSuccess = evaluation?.success ?? diag.success;
           item.attempts++;
           if (key.includes("/action-")) item.completed = diag.success;
-          if (event.error) {
+          if (evaluation?.error ?? !!event.error) {
             item.errors++;
             item.pending++;
           } else if (key === correctedStep) {
@@ -364,6 +376,7 @@ export function createAnalyticsService(db, training) {
                 : item.corrections,
             completed: item.completed,
             quality: summary.analysisQuality,
+            analysisVersion: analysisVersionFor(row.kind, row.version),
           });
         const key = `${row.mode}:${row.kind}:${row.version}:${step}`,
           agg = steps.get(key) || {
@@ -626,7 +639,7 @@ export function createAnalyticsService(db, training) {
         s.corrections,
         Number(s.completed),
         s.quality,
-        analyticsVersion,
+        s.analysisVersion,
       ]);
     } else throw accountError(400, "無效匯出類型。");
     res.writeHead(200, {

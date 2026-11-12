@@ -432,7 +432,7 @@ test("all thirteen groups finalize once, remain inspectable and reject later mut
     const s = await f.create(),
       token = await f.lease(s),
       x = complete("model", currentDailyVersion);
-    let state = x.state;
+    let state = { ...x.state, dailyPolicy: "practice" };
     const slots = { RB: 1, CALI: 1, QC: 1 };
     function run(command) {
       const out = applyCommand(

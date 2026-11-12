@@ -323,6 +323,7 @@ export function useDailyTraining(
     }
   }
   return {
+    unrestricted: false,
     preparation,
     loadingGate,
     loadingProgress,
@@ -431,7 +432,8 @@ export function DailyOverview({
               disabled={
                 !d.active ||
                 (route === "Rack Requisition" && !d.rackReady) ||
-                (route === "校正與品管上機" && !d.loadingGate.ready)
+                (route === "校正與品管上機" &&
+                  !(d.loadingGate.canOperate ?? d.loadingGate.ready))
               }
               onClick={() => go(route)}
             >
@@ -702,9 +704,8 @@ export function IsePreparation({ d }: { d: Daily }) {
               step="1"
               disabled={
                 !d.cupAccessible ||
-                d.cleanCup !== "discarded" ||
-                d.cal.serum ||
-                d.cal.urine
+                (!d.unrestricted &&
+                  (d.cleanCup !== "discarded" || d.cal.serum || d.cal.urine))
               }
               value={d.drops[i]}
               onChange={(e) =>
@@ -735,6 +736,7 @@ export function Calibration({
   d: Pick<
     Daily,
     | "active"
+    | "unrestricted"
     | "instrument"
     | "iseReady"
     | "canCalibrate"
@@ -861,7 +863,9 @@ export function Calibration({
         <label>
           <input
             type="checkbox"
-            disabled={disabled || !d.cal.serum || !d.cal.urine}
+            disabled={
+              disabled || (!d.unrestricted && (!d.cal.serum || !d.cal.urine))
+            }
             checked={d.cal.checked}
             onChange={(e) =>
               onReview

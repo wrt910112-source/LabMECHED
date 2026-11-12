@@ -68,7 +68,10 @@ export function IseDrainWorkspace({
         ISE 直線排水檢查{" "}
         <select
           aria-label="ISE 直線排水檢查"
-          disabled={!d.iseDiag.ran || !canRunIseProbeDiag(d.instrument)}
+          disabled={
+            (!d.unrestricted && !d.iseDiag.ran) ||
+            !canRunIseProbeDiag(d.instrument)
+          }
           value={d.drains.ISE || ""}
           onChange={(e) => notify(d.recordIseDrain(e.target.value))}
         >

@@ -22,7 +22,7 @@ export function practiceAction(d: Daily, action: PracticeAction, target = "") {
           : "";
   if (action === "drain" || action === "mix")
     reason =
-      d.mode !== "inspect"
+      !d.unrestricted && d.mode !== "inspect"
         ? "請先在電腦選擇 Inspect Probe & Mixing Bar"
         : !d.canInspect
           ? "請先完成六支探針擦拭"
@@ -44,7 +44,7 @@ export function practiceAction(d: Daily, action: PracticeAction, target = "") {
   if (action === "place-cal")
     reason = !d.cupAccessible
       ? "請先開啟 ISE 黑色上蓋，並確認 ISE 已停止"
-      : d.cleanCup !== "discarded"
+      : !d.unrestricted && d.cleanCup !== "discarded"
         ? "請先取出 CLEAN 杯"
         : cup < 0 || d.drops[cup] !== ""
           ? "此校正杯已放置"
@@ -54,9 +54,9 @@ export function practiceAction(d: Daily, action: PracticeAction, target = "") {
       ? "請先開啟 ISE 黑色上蓋，並確認 ISE 已停止"
       : cup < 0 || d.drops[cup] === ""
         ? "請先放入校正杯"
-        : d.cleanCup !== "discarded"
+        : !d.unrestricted && d.cleanCup !== "discarded"
           ? "請先取出 CLEAN 杯"
-          : d.cal.serum || d.cal.urine
+          : !d.unrestricted && (d.cal.serum || d.cal.urine)
             ? "本次校正已執行"
             : "";
   return { enabled: !reason, reason };

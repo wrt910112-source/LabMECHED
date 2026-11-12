@@ -7,8 +7,13 @@ import type {
   ActionOutcome,
 } from "./exam";
 import { attemptChecks } from "./exam.ts";
+import { hasUnrestrictedDailyExam } from "./dailyScenario.ts";
 import { initialBottles } from "../src/detergents.ts";
 export const analyticsVersion = "training-v1";
+export const analysisVersionFor = (kind: string, version: string) =>
+  kind === "daily" && hasUnrestrictedDailyExam(version)
+    ? "training-v2"
+    : analyticsVersion;
 export type TrainingMode = "practice" | "exam";
 export type ErrorCode =
   | "prerequisite"
@@ -28,6 +33,9 @@ export const errorNames: Record<ErrorCode, string> = {
   other: "其他",
 };
 export interface Diagnostic {
+  loadRack?: string;
+  correctedLoadSteps?: string[];
+  stepResults?: { step: string; success: boolean; error: boolean }[];
   version: string;
   steps: string[];
   errorCode: ErrorCode | null;
@@ -69,7 +77,9 @@ export function diagnoseEvent(
   out: ActionOutcome,
   version: string,
 ): Diagnostic {
-  const groups = attemptChecks(kind, out.state, [], version);
+  // A valid action remains a valid attempt even while an older rack snapshot
+  // withholds its final score. Only a push of that rack repairs its load error.
+  const groups = attemptChecks(kind, out.state, [], version, true);
   const launched = new Set<string>();
   const steps = new Set<string>();
   const add = (group: string, id?: string) =>
@@ -359,13 +369,35 @@ export function diagnoseEvent(
             : "prerequisite";
     }
   }
+  if (out.sequenceError) errorCode = "sequence";
   const completed = new Set(
     groups.flatMap((g) =>
       g.items.filter((i) => i.completed).map((i) => `${g.id}/${i.id}`),
     ),
   );
+  if (out.loadAssessment) {
+    const missing = new Set(out.loadAssessment.missingIds),
+      corrected = out.correctedLoadSteps || [];
+    const physical = [...steps].filter(
+      (key) => key.startsWith("preparation/") && completed.has(key),
+    );
+    const all = [...new Set([...physical, ...missing, ...corrected])];
+    return {
+      version: analysisVersionFor(kind, version),
+      steps: all,
+      errorCode: missing.size ? "prerequisite" : null,
+      success: out.accepted && !out.error,
+      loadRack: out.loadAssessment.rack,
+      correctedLoadSteps: corrected,
+      stepResults: all.map((step) => ({
+        step,
+        success: !missing.has(step),
+        error: missing.has(step),
+      })),
+    };
+  }
   return {
-    version: analyticsVersion,
+    version: analysisVersionFor(kind, version),
     steps: [...steps].filter(
       (key) =>
         !!out.error ||
